@@ -1,0 +1,452 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Core security primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn()
+        && request.auth.token.email is string
+        && request.auth.token.email_verified == true;
+    }
+
+    function isBootstrapAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'barnhem.tscf@gmail.com';
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && (
+        isBootstrapAdmin()
+        || exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function hasValidAllowedEmails(data) {
+      return data.allowedEmails is list
+        && data.allowedEmails.size() >= 1
+        && data.allowedEmails.size() <= 30
+        && data.allowedEmails[0] is string
+        && 'barnhem.tscf@gmail.com' in data.allowedEmails;
+    }
+
+    function isEmailAllowed(data) {
+      return isVerifiedUser()
+        && data.allowedEmails is list
+        && data.allowedEmails.size() >= 1
+        && data.allowedEmails.size() <= 30
+        && request.auth.token.email in data.allowedEmails;
+    }
+
+    function hasValidAuditCreate(data) {
+      return data.ownerUid is string
+        && data.ownerUid.size() >= 1
+        && data.ownerUid.size() <= 128
+        && data.ownerUid == request.auth.uid
+        && data.updatedByUid is string
+        && data.updatedByUid == request.auth.uid
+        && data.createdAt == request.time
+        && data.updatedAt == request.time;
+    }
+
+    function hasValidAuditUpdate() {
+      return incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedByUid == request.auth.uid
+        && incoming().updatedAt == request.time;
+    }
+
+    // Validation Blueprint: Member
+    function isValidMember(data) {
+      return data.keys().hasAll([
+          'id', 'role', 'nickname', 'fullName', 'gender', 'pin',
+          'stars', 'lateFineThb', 'freeDayPenaltyCount', 'kitchenDutyToday',
+          'personalDriveUrl', 'restrictedDocsUrl', 'mySpace',
+          'selectedCoverIndex', 'unlockedCovers', 'ownedShopItemIds',
+          'equippedAccessoryIds', 'collectedLocationItemIds',
+          'dailyProgress', 'penalties', 'starHistory',
+          'allowedEmails', 'ownerUid', 'updatedByUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'role', 'nickname', 'fullName', 'gender', 'pin',
+          'emoji', 'ageGroup', 'stars', 'lateFineThb', 'freeDayPenaltyCount',
+          'phoneBlockedReason', 'cartoonUnlockedToday', 'kitchenDutyToday',
+          'personalDriveUrl', 'restrictedDocsUrl', 'mySpace',
+          'selectedCoverIndex', 'unlockedCovers', 'customCoverImageBase64', 'ownedShopItemIds',
+          'equippedOutfitId', 'equippedAccessoryIds', 'collectedLocationItemIds',
+          'dailyProgress', 'penalties', 'starHistory', 'piggyBank',
+          'allowedEmails', 'ownerUid', 'updatedByUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.role in ['manager', 'staff', 'kid']
+        && data.nickname is string && data.nickname.size() >= 1 && data.nickname.size() <= 60
+        && data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 140
+        && data.gender in ['M', 'F']
+        && data.pin is string && data.pin.size() >= 4 && data.pin.size() <= 8 && data.pin.matches('^[0-9]{4,8}$')
+        && (!('emoji' in data) || (data.emoji is string && data.emoji.size() <= 16))
+        && (!('ageGroup' in data) || (data.ageGroup is number && data.ageGroup >= 1 && data.ageGroup <= 3))
+        && data.stars is number && data.stars >= 0 && data.stars <= 1000000
+        && data.lateFineThb is number && data.lateFineThb >= 0 && data.lateFineThb <= 100000
+        && data.freeDayPenaltyCount is number && data.freeDayPenaltyCount >= 0 && data.freeDayPenaltyCount <= 1000
+        && (!('phoneBlockedReason' in data) || (data.phoneBlockedReason is string && data.phoneBlockedReason.size() <= 300))
+        && (!('cartoonUnlockedToday' in data) || data.cartoonUnlockedToday is bool)
+        && data.kitchenDutyToday is bool
+        && data.personalDriveUrl is string && data.personalDriveUrl.size() <= 500
+        && data.restrictedDocsUrl is string && data.restrictedDocsUrl.size() <= 500
+        && data.mySpace is map
+        && data.mySpace.keys().hasAll(['favoriteColor', 'favoriteFood', 'favoritePet', 'futureDream'])
+        && data.mySpace.keys().hasOnly(['favoriteColor', 'favoriteFood', 'favoritePet', 'futureDream'])
+        && data.mySpace.favoriteColor is string && data.mySpace.favoriteColor.size() <= 80
+        && data.mySpace.favoriteFood is string && data.mySpace.favoriteFood.size() <= 80
+        && data.mySpace.favoritePet is string && data.mySpace.favoritePet.size() <= 80
+        && data.mySpace.futureDream is string && data.mySpace.futureDream.size() <= 200
+        && data.selectedCoverIndex is number && data.selectedCoverIndex >= 0 && data.selectedCoverIndex <= 6
+        && data.unlockedCovers is list && data.unlockedCovers.size() >= 1 && data.unlockedCovers.size() <= 7 && data.unlockedCovers[0] is number
+        && (!('customCoverImageBase64' in data) || (data.customCoverImageBase64 is string && data.customCoverImageBase64.size() <= 140000))
+        && data.ownedShopItemIds is list && data.ownedShopItemIds.size() <= 200
+        && (data.ownedShopItemIds.size() == 0 || data.ownedShopItemIds[0] is string)
+        && (!('equippedOutfitId' in data) || (data.equippedOutfitId is string && data.equippedOutfitId.size() <= 80))
+        && data.equippedAccessoryIds is list && data.equippedAccessoryIds.size() <= 20
+        && (data.equippedAccessoryIds.size() == 0 || data.equippedAccessoryIds[0] is string)
+        && data.collectedLocationItemIds is list && data.collectedLocationItemIds.size() <= 100
+        && (data.collectedLocationItemIds.size() == 0 || data.collectedLocationItemIds[0] is string)
+        && data.dailyProgress is map
+        && data.dailyProgress.dateStr is string && data.dailyProgress.dateStr.size() == 10
+        && data.penalties is list && data.penalties.size() <= 100
+        && (data.penalties.size() == 0 || data.penalties[0] is map)
+        && data.starHistory is list && data.starHistory.size() <= 100
+        && (data.starHistory.size() == 0 || data.starHistory[0] is map)
+        && (!('piggyBank' in data) || (
+          data.piggyBank is map
+          && data.piggyBank.savedStars is number && data.piggyBank.savedStars >= 0 && data.piggyBank.savedStars <= 1000000
+          && data.piggyBank.goalStars is number && data.piggyBank.goalStars >= 1 && data.piggyBank.goalStars <= 1000000
+          && data.piggyBank.goalLabel is string && data.piggyBank.goalLabel.size() <= 80
+          && data.piggyBank.isHidden is bool
+          && data.piggyBank.streakDays is number && data.piggyBank.streakDays >= 0 && data.piggyBank.streakDays <= 3650
+          && (!('lastDepositDateStr' in data.piggyBank) || (data.piggyBank.lastDepositDateStr is string && data.piggyBank.lastDepositDateStr.size() <= 10))
+          && data.piggyBank.transactions is list && data.piggyBank.transactions.size() <= 40
+          && (data.piggyBank.transactions.size() == 0 || data.piggyBank.transactions[0] is map)
+        ))
+        && hasValidAllowedEmails(data)
+        && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128
+        && data.updatedByUid is string && data.updatedByUid.size() >= 1 && data.updatedByUid.size() <= 128
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: ShopItem
+    function isValidShopItem(data) {
+      return data.keys().hasAll([
+          'id', 'name', 'nameEn', 'priceStars', 'category', 'emoji', 'description',
+          'allowedEmails', 'ownerUid', 'updatedByUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'name', 'nameEn', 'priceStars', 'category', 'decorSlot', 'locationIndex',
+          'emoji', 'imageBase64', 'description', 'colorHex',
+          'allowedEmails', 'ownerUid', 'updatedByUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 140
+        && data.nameEn is string && data.nameEn.size() >= 1 && data.nameEn.size() <= 140
+        && data.priceStars is number && data.priceStars >= 1 && data.priceStars <= 100000
+        && data.category in ['snack', 'decor']
+        && (!('decorSlot' in data) || data.decorSlot in ['outfit', 'accessory', 'location_item'])
+        && (!('locationIndex' in data) || (data.locationIndex is number && data.locationIndex >= 0 && data.locationIndex <= 6))
+        && data.emoji is string && data.emoji.size() >= 1 && data.emoji.size() <= 16
+        && (!('imageBase64' in data) || (data.imageBase64 is string && data.imageBase64.size() <= 140000))
+        && data.description is string && data.description.size() <= 400
+        && (!('colorHex' in data) || (data.colorHex is string && data.colorHex.size() <= 20))
+        && hasValidAllowedEmails(data)
+        && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128
+        && data.updatedByUid is string && data.updatedByUid.size() >= 1 && data.updatedByUid.size() <= 128
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: SickReport
+    function isValidSickReport(data) {
+      return data.keys().hasAll([
+          'id', 'kidId', 'kidNickname', 'symptom', 'details', 'reportedAt',
+          'dateStr', 'resolved', 'allowedEmails', 'ownerUid', 'updatedByUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'kidId', 'kidNickname', 'symptom', 'details', 'reportedAt',
+          'dateStr', 'resolved', 'allowedEmails', 'ownerUid', 'updatedByUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.kidId)
+        && data.kidNickname is string && data.kidNickname.size() >= 1 && data.kidNickname.size() <= 60
+        && data.symptom is string && data.symptom.size() >= 1 && data.symptom.size() <= 120
+        && data.details is string && data.details.size() <= 500
+        && data.reportedAt is string && data.reportedAt.size() >= 1 && data.reportedAt.size() <= 30
+        && data.dateStr is string && data.dateStr.size() == 10 && data.dateStr.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.resolved is bool
+        && hasValidAllowedEmails(data)
+        && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128
+        && data.updatedByUid is string && data.updatedByUid.size() >= 1 && data.updatedByUid.size() <= 128
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: SnackBill
+    function isValidSnackBill(data) {
+      return data.keys().hasAll([
+          'id', 'kidId', 'kidNickname', 'itemId', 'itemName', 'category', 'priceStars',
+          'createdAtLabel', 'dateStr', 'fulfilled', 'allowedEmails', 'ownerUid', 'updatedByUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'kidId', 'kidNickname', 'itemId', 'itemName', 'category', 'priceStars',
+          'createdAtLabel', 'dateStr', 'fulfilled', 'allowedEmails', 'ownerUid', 'updatedByUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.kidId)
+        && data.kidNickname is string && data.kidNickname.size() >= 1 && data.kidNickname.size() <= 60
+        && isValidId(data.itemId)
+        && data.itemName is string && data.itemName.size() >= 1 && data.itemName.size() <= 140
+        && data.category in ['snack', 'decor']
+        && data.priceStars is number && data.priceStars >= 1 && data.priceStars <= 100000
+        && data.createdAtLabel is string && data.createdAtLabel.size() >= 1 && data.createdAtLabel.size() <= 30
+        && data.dateStr is string && data.dateStr.size() == 10 && data.dateStr.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.fulfilled is bool
+        && hasValidAllowedEmails(data)
+        && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128
+        && data.updatedByUid is string && data.updatedByUid.size() >= 1 && data.updatedByUid.size() <= 128
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: FoundationSettings
+    function isValidFoundationSettings(data) {
+      return data.keys().hasAll([
+          'creatorPins', 'googleSheetsUrl', 'allowedEmails',
+          'ownerUid', 'updatedByUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'creatorPins', 'googleSheetsUrl', 'allowedEmails', 'holidayDate', 'doorCommands',
+          'ownerUid', 'updatedByUid', 'createdAt', 'updatedAt'
+        ])
+        && data.creatorPins is list && data.creatorPins.size() >= 1 && data.creatorPins.size() <= 10 && data.creatorPins[0] is string
+        && data.googleSheetsUrl is string && data.googleSheetsUrl.size() <= 500
+        && hasValidAllowedEmails(data)
+        && (!('holidayDate' in data) || (data.holidayDate is string && data.holidayDate.size() <= 10))
+        && (!('doorCommands' in data) || (
+          data.doorCommands is list
+          && data.doorCommands.size() <= 30
+          && (data.doorCommands.size() == 0 || data.doorCommands[0] is map)
+        ))
+        && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128
+        && data.updatedByUid is string && data.updatedByUid.size() >= 1 && data.updatedByUid.size() <= 128
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: AdminUser
+    function isValidAdminUser(data) {
+      return data.keys().hasAll(['email', 'grantedByUid', 'createdAt'])
+        && data.keys().hasOnly(['email', 'grantedByUid', 'createdAt'])
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 120
+        && data.grantedByUid is string && data.grantedByUid.size() >= 1 && data.grantedByUid.size() <= 128
+        && data.createdAt is timestamp;
+    }
+
+    // Collection: members
+    match /members/{memberId} {
+      allow get: if isValidId(memberId) && (isAdmin() || isEmailAllowed(existing()));
+      allow list: if isVerifiedUser()
+        && existing().allowedEmails is list
+        && existing().allowedEmails.size() <= 30
+        && request.auth.token.email in existing().allowedEmails;
+
+      allow create: if isValidId(memberId)
+        && isAdmin()
+        && isValidMember(incoming())
+        && incoming().id == memberId
+        && hasValidAuditCreate(incoming());
+
+      allow update: if isValidId(memberId)
+        && isVerifiedUser()
+        && isValidMember(incoming())
+        && incoming().id == existing().id
+        && hasValidAuditUpdate()
+        && (
+          isAdmin()
+          || (
+            isEmailAllowed(existing())
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'stars', 'lateFineThb', 'freeDayPenaltyCount', 'phoneBlockedReason',
+              'cartoonUnlockedToday', 'kitchenDutyToday', 'mySpace',
+              'selectedCoverIndex', 'unlockedCovers', 'customCoverImageBase64', 'ownedShopItemIds',
+              'equippedOutfitId', 'equippedAccessoryIds', 'collectedLocationItemIds',
+              'dailyProgress', 'penalties', 'starHistory', 'piggyBank',
+              'updatedByUid', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isValidId(memberId) && isAdmin();
+    }
+
+    // Collection: shop_items
+    match /shop_items/{itemId} {
+      allow get: if isValidId(itemId) && (isAdmin() || isEmailAllowed(existing()));
+      allow list: if isVerifiedUser()
+        && existing().allowedEmails is list
+        && existing().allowedEmails.size() <= 30
+        && request.auth.token.email in existing().allowedEmails;
+
+      allow create: if isValidId(itemId)
+        && isAdmin()
+        && isValidShopItem(incoming())
+        && incoming().id == itemId
+        && hasValidAuditCreate(incoming());
+
+      allow update: if isValidId(itemId)
+        && isAdmin()
+        && isValidShopItem(incoming())
+        && incoming().id == existing().id
+        && hasValidAuditUpdate();
+
+      allow delete: if isValidId(itemId) && isAdmin();
+    }
+
+    // Collection: sick_reports
+    match /sick_reports/{reportId} {
+      allow get: if isValidId(reportId) && (isAdmin() || isEmailAllowed(existing()));
+      allow list: if isVerifiedUser()
+        && existing().allowedEmails is list
+        && existing().allowedEmails.size() <= 30
+        && request.auth.token.email in existing().allowedEmails;
+
+      allow create: if isValidId(reportId)
+        && isVerifiedUser()
+        && isValidSickReport(incoming())
+        && incoming().id == reportId
+        && incoming().resolved == false
+        && hasValidAuditCreate(incoming())
+        && (isAdmin() || isEmailAllowed(incoming()))
+        && exists(/databases/$(database)/documents/members/$(incoming().kidId));
+
+      allow update: if isValidId(reportId)
+        && isVerifiedUser()
+        && isValidSickReport(incoming())
+        && incoming().id == existing().id
+        && hasValidAuditUpdate()
+        && (
+          isAdmin()
+          || (
+            isEmailAllowed(existing())
+            && existing().resolved == false
+            && incoming().resolved == true
+            && incoming().diff(existing()).affectedKeys().hasOnly(['resolved', 'updatedByUid', 'updatedAt'])
+          )
+        );
+
+      allow delete: if isValidId(reportId) && isAdmin();
+    }
+
+    // Collection: snack_bills
+    match /snack_bills/{billId} {
+      allow get: if isValidId(billId) && (isAdmin() || isEmailAllowed(existing()));
+      allow list: if isVerifiedUser()
+        && existing().allowedEmails is list
+        && existing().allowedEmails.size() <= 30
+        && request.auth.token.email in existing().allowedEmails;
+
+      allow create: if isValidId(billId)
+        && isVerifiedUser()
+        && isValidSnackBill(incoming())
+        && incoming().id == billId
+        && hasValidAuditCreate(incoming())
+        && (isAdmin() || isEmailAllowed(incoming()))
+        && exists(/databases/$(database)/documents/members/$(incoming().kidId));
+
+      allow update: if isValidId(billId)
+        && isVerifiedUser()
+        && isValidSnackBill(incoming())
+        && incoming().id == existing().id
+        && hasValidAuditUpdate()
+        && (
+          isAdmin()
+          || (
+            isEmailAllowed(existing())
+            && existing().fulfilled == false
+            && incoming().fulfilled == true
+            && incoming().diff(existing()).affectedKeys().hasOnly(['fulfilled', 'updatedByUid', 'updatedAt'])
+          )
+        );
+
+      allow delete: if isValidId(billId) && isAdmin();
+    }
+
+    // Collection: foundation_settings
+    match /foundation_settings/{settingId} {
+      allow get: if isValidId(settingId) && (isAdmin() || isEmailAllowed(existing()));
+      allow list: if isVerifiedUser()
+        && existing().allowedEmails is list
+        && existing().allowedEmails.size() <= 30
+        && request.auth.token.email in existing().allowedEmails;
+
+      allow create: if isValidId(settingId)
+        && settingId == 'main'
+        && isAdmin()
+        && isValidFoundationSettings(incoming())
+        && hasValidAuditCreate(incoming());
+
+      allow update: if isValidId(settingId)
+        && settingId == 'main'
+        && isVerifiedUser()
+        && isValidFoundationSettings(incoming())
+        && hasValidAuditUpdate()
+        && (
+          isAdmin()
+          || (
+            isEmailAllowed(existing())
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'holidayDate', 'doorCommands', 'updatedByUid', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    // Collection: admins
+    match /admins/{adminUid} {
+      allow get: if isValidId(adminUid) && isVerifiedUser() && (request.auth.uid == adminUid || isBootstrapAdmin());
+      allow list: if false;
+      allow create: if isValidId(adminUid)
+        && isBootstrapAdmin()
+        && isValidAdminUser(incoming())
+        && incoming().grantedByUid == request.auth.uid
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isValidId(adminUid) && isBootstrapAdmin();
+    }
+
+    // Startup connection check document (bootstrap admin only)
+    match /test/connection {
+      allow get: if isBootstrapAdmin();
+      allow list, write: if false;
+    }
+  }
+}

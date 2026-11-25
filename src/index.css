@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-cream: #FFFDF9;
+    --pastel-pink: #FADADD;
+    --pastel-mint: #D4F0F0;
+    --pastel-blue: #DCEEF8;
+    --pastel-yellow: #FFF5BA;
+    --pastel-lavender: #EAE4F2;
+    --pastel-peach: #FDE2D2;
+    --earth-brown: #EBD8C3;
+    --ink-dark: #3B2F2A;
+    --ink-muted: #705F56;
+  }
+
+  html,
+  body {
+    font-family: 'Kanit', system-ui, -apple-system, sans-serif;
+    background-color: #FFFEFC;
+    background-image: radial-gradient(rgba(235, 198, 208, 0.35) 1.5px, transparent 1.5px);
+    background-size: 26px 26px;
+    color: #2F2A28;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.pastel-card {
+  box-shadow: 0 10px 30px -10px rgba(120, 95, 78, 0.12), 0 2px 8px -2px rgba(120, 95, 78, 0.06);
+}
+
+.pastel-btn {
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 160ms cubic-bezier(0.16, 1, 0.3, 1), background-color 160ms ease;
+}
+
+.pastel-btn:active {
+  transform: scale(0.98);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pastel-btn {
+    transition: none;
+  }
+}
+
+@page {
+  size: A4 portrait;
+  margin: 7mm;
+}
+
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+    background-image: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only-sheet-wrapper {
+    position: static !important;
+    inset: auto !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    backdrop-filter: none !important;
+  }
+
+  .print-only-sheet-card {
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .qr-print-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+

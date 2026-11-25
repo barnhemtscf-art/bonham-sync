@@ -1,0 +1,10 @@
+{
+  "name": "Barnhem Super App (All-in-One)",
+  "description": "Barnhem Care & Kids Foundation management, kids daily routine hub, rewards shop, staff operations, and bilingual manager dashboard.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

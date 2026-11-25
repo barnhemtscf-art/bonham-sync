@@ -1,0 +1,138 @@
+export interface DailyVocabEntry {
+  id: string;
+  jp: string;
+  jpReading: string;
+  zh: string;
+  zhReading: string;
+  en: string;
+  th: string;
+}
+
+export const DAILY_VOCAB_LIST: DailyVocabEntry[] = [
+  {
+    id: 'morning',
+    jp: 'おはよう',
+    jpReading: 'Ohayou · โอะฮะโย',
+    zh: '早上好',
+    zhReading: 'Zǎoshang hǎo · จ่าวซ่างห่าว',
+    en: 'Good morning',
+    th: 'สวัสดีตอนเช้า',
+  },
+  {
+    id: 'thankyou',
+    jp: 'ありがとう',
+    jpReading: 'Arigatou · อะริงาโต',
+    zh: '谢谢',
+    zhReading: 'Xièxie · เซี่ยเซี่ย',
+    en: 'Thank you',
+    th: 'ขอบคุณ',
+  },
+  {
+    id: 'sorry',
+    jp: 'ごめんなさい',
+    jpReading: 'Gomennasai · โกะเม็นนะไซ',
+    zh: '对不起',
+    zhReading: 'Duìbuqǐ · ตุ้ยปู้ฉี่',
+    en: "I'm sorry",
+    th: 'ขอโทษ',
+  },
+  {
+    id: 'water',
+    jp: 'みず',
+    jpReading: 'Mizu · มิซุ',
+    zh: '水',
+    zhReading: 'Shuǐ · สุ่ย',
+    en: 'Water',
+    th: 'น้ำดื่ม',
+  },
+  {
+    id: 'rice',
+    jp: 'ごはん',
+    jpReading: 'Gohan · โกฮัง',
+    zh: '米饭',
+    zhReading: 'Mǐfàn · หมี่ฟ่าน',
+    en: 'Rice',
+    th: 'ข้าวสวย',
+  },
+  {
+    id: 'book',
+    jp: 'ほん',
+    jpReading: 'Hon · ฮง',
+    zh: '书',
+    zhReading: 'Shū · ซู',
+    en: 'Book',
+    th: 'หนังสือ',
+  },
+  {
+    id: 'school',
+    jp: 'がっこう',
+    jpReading: 'Gakkou · กักโค',
+    zh: '学校',
+    zhReading: 'Xuéxiào · เสวียเซี่ยว',
+    en: 'School',
+    th: 'โรงเรียน',
+  },
+  {
+    id: 'friend',
+    jp: 'ともだち',
+    jpReading: 'Tomodachi · โทะโมะดะจิ',
+    zh: '朋友',
+    zhReading: 'Péngyou · เผิงโหย่ว',
+    en: 'Friend',
+    th: 'เพื่อน',
+  },
+  {
+    id: 'smile',
+    jp: 'えがお',
+    jpReading: 'Egao · เอะงะโอะ',
+    zh: '微笑',
+    zhReading: 'Wēixiào · เวยเซี่ยว',
+    en: 'Smile',
+    th: 'รอยยิ้ม',
+  },
+  {
+    id: 'home',
+    jp: 'いえ',
+    jpReading: 'Ie · อิเอะ',
+    zh: '家',
+    zhReading: 'Jiā · เจีย',
+    en: 'Home',
+    th: 'บ้าน',
+  },
+  {
+    id: 'star',
+    jp: 'ほし',
+    jpReading: 'Hoshi · โฮะชิ',
+    zh: '星星',
+    zhReading: 'Xīngxing · ซิงซิง',
+    en: 'Star',
+    th: 'ดวงดาว',
+  },
+  {
+    id: 'clean',
+    jp: 'きれい',
+    jpReading: 'Kirei · คิเร',
+    zh: '干净',
+    zhReading: 'Gānjìng · กานจิ้ง',
+    en: 'Clean',
+    th: 'สะอาด',
+  },
+  {
+    id: 'ganbatte',
+    jp: 'がんばって',
+    jpReading: 'Ganbatte · กัมบัตเตะ',
+    zh: '加油',
+    zhReading: 'Jiāyóu · เจียโหยว',
+    en: 'Do your best',
+    th: 'สู้ๆ นะ',
+  },
+  {
+    id: 'goodnight',
+    jp: 'おやすみ',
+    jpReading: 'Oyasumi · โอะยะซุมิ',
+    zh: '晚安',
+    zhReading: "Wǎn'ān · หวั่นอัน",
+    en: 'Good night',
+    th: 'ฝันดีนะ',
+  },
+];
