@@ -9,7 +9,10 @@ import {
   buildSickReportCreateDoc,
   buildSnackBillCreateDoc,
   normalizeAllowedEmails,
+  sanitizeBearStyleForFirestore,
+  sanitizeDoorCommandsForFirestore,
 } from './src/services/firestoreSync';
+import { createDefaultDoorCommands } from './src/utils/doorCommands';
 
 const rulesPath = path.resolve(process.cwd(), 'firestore.rules');
 const rulesText = fs.readFileSync(rulesPath, 'utf8');
@@ -100,4 +103,29 @@ test('Firestore payload sanitizers enforce schema bounds and allowlist', () => {
   );
   assert.equal(billDoc.createdAtLabel, '10:00:00');
   assert.ok(rulesText.includes('doorCommands'));
+  assert.ok(rulesText.includes('bearStyle'));
+
+  const sanitizedBear = sanitizeBearStyleForFirestore({
+    glasses: false,
+    hat: 'cap',
+    outfit: 'hoodie',
+    outfitColor: 'mint',
+    hasScarf: false,
+    prop: 'tablet',
+  });
+  assert.deepEqual(sanitizedBear, {
+    glasses: false,
+    hat: 'cap',
+    outfit: 'hoodie',
+    outfitColor: 'mint',
+    hasScarf: false,
+    prop: 'tablet',
+  });
+
+  const defaultCmds = createDefaultDoorCommands(state.members);
+  const sanitizedCmds = sanitizeDoorCommandsForFirestore(defaultCmds);
+  assert.equal(sanitizedCmds.length, 15);
+  assert.deepEqual(sanitizedCmds[1].activeDays, ['mon', 'tue', 'wed', 'thu', 'fri']);
+  assert.equal(sanitizedCmds[1].penaltyMaxThb, 20);
+  assert.equal(sanitizedCmds[2].penaltyMaxThb, 50);
 });

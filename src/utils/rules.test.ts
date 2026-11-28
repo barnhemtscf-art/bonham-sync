@@ -408,58 +408,79 @@ test('all kid credentials (PIN, ID, QR) are blocked at back-office login gate wh
   assert.equal(resolveUnifiedLogin('BARNHEM:staff_ek:9794', state.members, creatorPins).type, 'staff');
 });
 
-test('door command buttons enforce schedule, early window, deadline, eligible kids, and PIN verification', () => {
+test('door command buttons enforce schedule, activeDays, dynamic 22:45 deadline, penalty caps, eligible kids, and PIN verification', () => {
+  // Wednesday Nov 18, 2026 (weekday)
+  const wed = new Date(2026, 10, 18, 6, 35);
+  const sat = new Date(2026, 10, 21, 8, 20);
   const state = createDefaultState('2026-11-18');
   const commands = createDefaultDoorCommands(state.members);
-  assert.equal(commands.length, 9);
+  assert.equal(commands.length, 15);
 
   const staffMembers = state.members.filter((m) => m.role === 'staff');
   const kao = state.members.find((m) => m.id === 'j1')!; // Group 1
+  const gwang = state.members.find((m) => m.id === 's3')!; // Group 2
   const bank = state.members.find((m) => m.id === 's4')!; // Group 2
+  const suea = state.members.find((m) => m.id === 's1')!; // Group 3 (intern)
 
   const breakfastCmd = commands.find((c) => c.id === 'cmd_breakfast')!;
-  // Before 06:00 (06:10 - 10m early) => locked
-  assert.equal(getDoorCommandAvailability(breakfastCmd, new Date(2026, 10, 18, 5, 55)).canOpen, false);
-  // 06:02 => early window open
-  assert.equal(getDoorCommandAvailability(breakfastCmd, new Date(2026, 10, 18, 6, 2)).status, 'early_window');
+  // Before 06:30 => locked
+  assert.equal(getDoorCommandAvailability(breakfastCmd, new Date(2026, 10, 18, 6, 15)).canOpen, false);
+  // 06:35 on Wednesday => open on time (+10 stars, direct)
+  assert.equal(getDoorCommandAvailability(breakfastCmd, wed).status, 'open_ontime');
+  // On Saturday => inactive_day and hidden
+  const satBreakfast = getDoorCommandAvailability(breakfastCmd, sat);
+  assert.equal(satBreakfast.status, 'inactive_day');
+  assert.equal(isDoorCommandExpired(satBreakfast), true);
 
   // Group 2 kid (bank) is not in breakfastCmd.allowedKidIds
   const notEligible = executeDoorCommand({
     cmd: breakfastCmd,
     kid: bank,
-    staffPinInput: '9794',
     staffMembers,
     creatorPins: state.settings.creatorPins,
-    now: new Date(2026, 10, 18, 6, 20),
+    now: wed,
   });
   assert.equal(notEligible.ok, false);
 
-  // Wrong staff PIN rejected
-  const wrongPin = executeDoorCommand({
+  // Direct breakfast check-in succeeds & awards +10 stars
+  const okBreakfast = executeDoorCommand({
     cmd: breakfastCmd,
     kid: kao,
-    staffPinInput: '0000',
     staffMembers,
     creatorPins: state.settings.creatorPins,
-    now: new Date(2026, 10, 18, 6, 20),
+    now: wed,
   });
-  assert.equal(wrongPin.ok, false);
+  assert.equal(okBreakfast.ok, true);
+  assert.equal(okBreakfast.updatedMember.stars, kao.stars + 10);
+  assert.ok(okBreakfast.updatedMember.dailyProgress.completedCommandIds?.includes('cmd_breakfast'));
 
-  // Correct staff PIN succeeds & awards +5 stars
-  const okStaff = executeDoorCommand({
-    cmd: breakfastCmd,
+  // Fine caps: cmd_school_jr capped at 20 THB, cmd_school_sr capped at 50 THB
+  const schoolJrCmd = commands.find((c) => c.id === 'cmd_school_jr')!;
+  const lateJr = executeDoorCommand({
+    cmd: schoolJrCmd,
     kid: kao,
-    staffPinInput: '9794',
     staffMembers,
     creatorPins: state.settings.creatorPins,
-    now: new Date(2026, 10, 18, 6, 20),
+    now: new Date(2026, 10, 18, 7, 29),
   });
-  assert.equal(okStaff.ok, true);
-  assert.equal(okStaff.updatedMember.stars, kao.stars + 5);
-  assert.ok(okStaff.updatedMember.dailyProgress.completedCommandIds?.includes('cmd_breakfast'));
+  assert.equal(lateJr.ok, true);
+  assert.equal(lateJr.updatedMember.lateFineThb, 20);
 
-  // Kid PIN command: คืนมือถือ after Curfew 21:00 -> deducts Free Day
+  const schoolSrCmd = commands.find((c) => c.id === 'cmd_school_sr')!;
+  const lateSr = executeDoorCommand({
+    cmd: schoolSrCmd,
+    kid: gwang,
+    staffMembers,
+    creatorPins: state.settings.creatorPins,
+    now: new Date(2026, 10, 18, 7, 29),
+  });
+  assert.equal(lateSr.ok, true);
+  assert.equal(lateSr.updatedMember.lateFineThb, 40); // 8 mins * 5 THB = 40 THB
+
+  // Dynamic deadline on cmd_return_phone: 21:00 normally, 22:45 if cmd_homework done today
+  const homeworkCmd = commands.find((c) => c.id === 'cmd_homework')!;
   const returnCmd = commands.find((c) => c.id === 'cmd_return_phone')!;
+
   const badKidPin = executeDoorCommand({
     cmd: returnCmd,
     kid: bank,
@@ -470,6 +491,7 @@ test('door command buttons enforce schedule, early window, deadline, eligible ki
   });
   assert.equal(badKidPin.ok, false);
 
+  // Without homework request -> 21:10 is late and deducts Free Day
   const lateKidReturn = executeDoorCommand({
     cmd: returnCmd,
     kid: bank,
@@ -482,18 +504,48 @@ test('door command buttons enforce schedule, early window, deadline, eligible ki
   assert.equal(lateKidReturn.updatedMember.freeDayPenaltyCount, 1);
   assert.equal(lateKidReturn.updatedMember.dailyProgress.phoneReturnedDone, true);
 
+  // With cmd_homework completed today -> 22:30 return is ON TIME (+10 stars, 0 Free Day penalty)
+  const afterHw = executeDoorCommand({
+    cmd: homeworkCmd,
+    kid: gwang,
+    kidPinInput: gwang.pin,
+    staffMembers,
+    creatorPins: state.settings.creatorPins,
+    now: new Date(2026, 10, 18, 20, 40),
+  });
+  assert.equal(afterHw.ok, true);
+  const hwReturnOnTime = executeDoorCommand({
+    cmd: returnCmd,
+    kid: afterHw.updatedMember,
+    kidPinInput: gwang.pin,
+    staffMembers,
+    creatorPins: state.settings.creatorPins,
+    now: new Date(2026, 10, 18, 22, 30),
+  });
+  assert.equal(hwReturnOnTime.ok, true);
+  assert.equal(hwReturnOnTime.updatedMember.freeDayPenaltyCount, 0);
+  assert.equal(hwReturnOnTime.updatedMember.stars, gwang.stars + 20);
+
+  // Intern phone return (Suea only, not on Saturday)
+  const internReturnCmd = commands.find((c) => c.id === 'cmd_intern_return_phone')!;
+  assert.deepEqual(internReturnCmd.allowedKidIds, [suea.id]);
+  assert.equal(
+    getDoorCommandAvailability(internReturnCmd, new Date(2026, 10, 21, 22, 15)).status,
+    'inactive_day'
+  );
+
   // Expired filtering: before_window & open are kept visible; after_window & locked_after_deadline are hidden
-  const morningPhoneCmd = commands.find((c) => c.id === 'cmd_morning_phone')!;
+  const cartoonCmd = commands.find((c) => c.id === 'cmd_cartoon')!;
   assert.equal(
-    isDoorCommandExpired(getDoorCommandAvailability(morningPhoneCmd, new Date(2026, 10, 18, 5, 45))),
+    isDoorCommandExpired(getDoorCommandAvailability(cartoonCmd, new Date(2026, 10, 18, 19, 45))),
     false
   );
   assert.equal(
-    isDoorCommandExpired(getDoorCommandAvailability(morningPhoneCmd, new Date(2026, 10, 18, 6, 30))),
+    isDoorCommandExpired(getDoorCommandAvailability(cartoonCmd, new Date(2026, 10, 18, 20, 20))),
     false
   );
   assert.equal(
-    isDoorCommandExpired(getDoorCommandAvailability(morningPhoneCmd, new Date(2026, 10, 18, 7, 1))),
+    isDoorCommandExpired(getDoorCommandAvailability(cartoonCmd, new Date(2026, 10, 18, 20, 45))),
     true
   );
 

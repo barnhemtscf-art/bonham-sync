@@ -4,12 +4,16 @@ import {
   AlertModalPayload,
   DoorCommandAuthMode,
   DoorCommandConfig,
+  DoorCommandDayKey,
   DoorCommandPenaltyType,
   Language,
   Member,
 } from '../types/barnhem';
 import {
+  ALL_DOOR_COMMAND_DAYS,
   createDefaultDoorCommands,
+  DOOR_COMMAND_DAY_OPTIONS,
+  formatActiveDaysLabel,
   formatAuthModeLabel,
   formatPenaltyRuleLabel,
 } from '../utils/doorCommands';
@@ -40,12 +44,13 @@ const EMPTY_FORM = (kids: Member[]): DoorCommandConfig => ({
   titleTh: '',
   descriptionTh: '',
   emoji: '✨',
+  activeDays: [...ALL_DOOR_COMMAND_DAYS],
   startTime: '07:00',
   endTime: '08:00',
-  earlyMinutes: 5,
+  earlyMinutes: 0,
   deadlineTime: '07:30',
   authMode: 'direct',
-  rewardStars: 5,
+  rewardStars: 10,
   penaltyType: 'none',
   penaltyValue: 0,
   penaltyNoteTh: '',
@@ -59,6 +64,7 @@ const EMPTY_PENALTY_FORM = (kids: Member[]): DoorCommandConfig => ({
   titleTh: 'บทลงโทษ',
   descriptionTh: 'บันทึกบทลงโทษประจำวัน (พี่เลี้ยงใส่ PIN ยืนยันเพื่อบันทึกโทษทันที)',
   emoji: '⚖️',
+  activeDays: ['mon', 'tue', 'wed', 'thu', 'sat', 'sun', 'holiday'],
   startTime: '00:00',
   endTime: '23:59',
   earlyMinutes: 0,
@@ -67,7 +73,7 @@ const EMPTY_PENALTY_FORM = (kids: Member[]): DoorCommandConfig => ({
   rewardStars: 0,
   penaltyType: 'deduct_free_day',
   penaltyValue: 1,
-  penaltyNoteTh: 'ทำผิดกติกาบ้าน — หักสิทธิ์ Free Day 1 วัน',
+  penaltyNoteTh: 'หัก Free Day 1 วัน',
   allowedKidIds: kids.map((k) => k.id),
   enabled: true,
 });
@@ -142,6 +148,10 @@ export const DoorCommandsManagerSection: React.FC<DoorCommandsManagerSectionProp
     setEditingCmd({
       ...cmd,
       commandKind: cmd.commandKind === 'penalty' ? 'penalty' : 'routine',
+      activeDays:
+        Array.isArray(cmd.activeDays) && cmd.activeDays.length > 0
+          ? [...cmd.activeDays]
+          : [...ALL_DOOR_COMMAND_DAYS],
       allowedKidIds: [...cmd.allowedKidIds],
     });
   };
@@ -170,7 +180,7 @@ export const DoorCommandsManagerSection: React.FC<DoorCommandsManagerSectionProp
     onShowAlert({
       icon: '🔄',
       title: 'รีเซ็ตปุ่มคำสั่งหน้าล็อคอินเป็นค่าเริ่มต้น?',
-      message: 'ต้องการคืนค่าปุ่มคำสั่งทั้งหมดกลับเป็น 9 ปุ่มมาตรฐานของมูลนิธิ (รวมปุ่มบทลงโทษ) ใช่หรือไม่',
+      message: 'ต้องการคืนค่าปุ่มคำสั่งทั้งหมดกลับเป็น 15 ปุ่มมาตรฐานล่าสุดของมูลนิธิ (รวมตารางวันและปุ่มบทลงโทษ) ใช่หรือไม่',
       tone: 'yellow',
       showCancel: true,
       confirmText: 'ยืนยันรีเซ็ต',
@@ -199,17 +209,27 @@ export const DoorCommandsManagerSection: React.FC<DoorCommandsManagerSectionProp
       editingCmd.penaltyType === 'custom_task'
         ? editingCmd.customPenaltyLabelTh?.trim().slice(0, 120) || undefined
         : undefined;
+    const normalizedDays =
+      Array.isArray(editingCmd.activeDays) && editingCmd.activeDays.length > 0
+        ? editingCmd.activeDays
+        : [...ALL_DOOR_COMMAND_DAYS];
+    const sanitizedMaxThb =
+      editingCmd.penaltyType === 'fine_per_min'
+        ? Math.max(1, Math.min(5000, Math.round(Number(editingCmd.penaltyMaxThb) || 50)))
+        : undefined;
     const sanitized: DoorCommandConfig = {
       ...editingCmd,
       commandKind: isPenalty ? 'penalty' : 'routine',
       titleTh: cleanTitle.slice(0, 60),
       descriptionTh: editingCmd.descriptionTh.trim().slice(0, 160),
       emoji: editingCmd.emoji.trim().slice(0, 8) || (isPenalty ? '⚖️' : '✨'),
+      activeDays: normalizedDays,
       earlyMinutes: Math.max(0, Math.min(180, Math.round(Number(editingCmd.earlyMinutes) || 0))),
       rewardStars: isPenalty
         ? 0
         : Math.max(0, Math.min(500, Math.round(Number(editingCmd.rewardStars) || 0))),
       penaltyValue: Math.max(0, Math.min(500, Math.round(Number(editingCmd.penaltyValue) || 0))),
+      ...(sanitizedMaxThb ? { penaltyMaxThb: sanitizedMaxThb } : { penaltyMaxThb: undefined }),
       penaltyNoteTh: editingCmd.penaltyNoteTh.trim().slice(0, 160),
       ...(customLabelClean ? { customPenaltyLabelTh: customLabelClean } : { customPenaltyLabelTh: undefined }),
     };
@@ -226,9 +246,18 @@ export const DoorCommandsManagerSection: React.FC<DoorCommandsManagerSectionProp
     onShowAlert({
       icon: sanitized.emoji,
       title: isNewCmd ? `เพิ่มปุ่ม "${sanitized.titleTh}" แล้ว` : `บันทึกปุ่ม "${sanitized.titleTh}" แล้ว`,
-      message: `สิทธิ์ผู้กด ${sanitized.allowedKidIds.length}/${kids.length} คน · เวลา ${sanitized.startTime}–${sanitized.endTime} น. (เส้นตาย ${sanitized.deadlineTime} น.)`,
+      message: `สิทธิ์ผู้กด ${sanitized.allowedKidIds.length}/${kids.length} คน · วัน ${formatActiveDaysLabel(sanitized.activeDays)} · เวลา ${sanitized.startTime}–${sanitized.endTime} น.`,
       tone: 'mint',
     });
+  };
+
+  const toggleActiveDay = (dayKey: DoorCommandDayKey) => {
+    if (!editingCmd) return;
+    const current = editingCmd.activeDays || [];
+    const next = current.includes(dayKey)
+      ? current.filter((d) => d !== dayKey)
+      : [...current, dayKey];
+    setEditingCmd({ ...editingCmd, activeDays: next });
   };
 
   const toggleKidEligibility = (kidId: string) => {
@@ -327,7 +356,7 @@ export const DoorCommandsManagerSection: React.FC<DoorCommandsManagerSectionProp
             onClick={handleResetDefaults}
             className="pastel-btn inline-flex min-h-[40px] items-center gap-1.5 rounded-xl border border-[#EBD8C3] bg-[#FFFDF9] px-3 text-xs font-bold text-[#5C4B43] hover:bg-[#FAF4EC]"
           >
-            <RotateCcw className="h-3.5 w-3.5" /> รีเซ็ตปุ่มมาตรฐาน (9 ปุ่ม)
+            <RotateCcw className="h-3.5 w-3.5" /> รีเซ็ตปุ่มมาตรฐาน (15 ปุ่ม)
           </button>
           <button
             type="button"
@@ -383,6 +412,7 @@ export const DoorCommandsManagerSection: React.FC<DoorCommandsManagerSectionProp
                     <span>
                       ⏰ {cmd.startTime}–{cmd.endTime} น.
                     </span>
+                    <span>· 📅 {formatActiveDaysLabel(cmd.activeDays)}</span>
                     <span>· ก่อนเวลา {cmd.earlyMinutes} น.</span>
                     <span className="font-semibold text-[#9F1239]">· เส้นตาย {cmd.deadlineTime} น.</span>
                   </div>
@@ -390,7 +420,13 @@ export const DoorCommandsManagerSection: React.FC<DoorCommandsManagerSectionProp
                     <span>{formatAuthModeLabel(cmd.authMode)}</span>
                     {!isPenalty && <span>· +{cmd.rewardStars} ⭐</span>}
                     <span className={isPenalty ? 'font-semibold text-[#9F1239]' : ''}>
-                      · {formatPenaltyRuleLabel(cmd.penaltyType, cmd.penaltyValue, cmd.customPenaltyLabelTh)}
+                      ·{' '}
+                      {formatPenaltyRuleLabel(
+                        cmd.penaltyType,
+                        cmd.penaltyValue,
+                        cmd.customPenaltyLabelTh,
+                        cmd.penaltyMaxThb
+                      )}
                     </span>
                   </div>
                 </div>
@@ -542,6 +578,69 @@ export const DoorCommandsManagerSection: React.FC<DoorCommandsManagerSectionProp
                   placeholder="อธิบายสั้นๆ ว่าปุ่มนี้ใช้สำหรับทำอะไร"
                   className="min-h-[44px] w-full rounded-xl border-2 border-[#EBD8C3] bg-white px-3 text-sm"
                 />
+              </div>
+            </div>
+
+            {/* Active Days of Week + Public Holiday */}
+            <div className="space-y-2 rounded-[20px] border border-[#EBD8C3] bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-bold text-[#3B2F2A]">
+                  📅 วันเปิดใช้งานปุ่ม (จ, อ, พ, พฤ, ศ, ส, อา, นักขัตฤกษ์)
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditingCmd({ ...editingCmd, activeDays: [...ALL_DOOR_COMMAND_DAYS] })
+                    }
+                    className="min-h-[28px] rounded-lg border border-[#EBD8C3] bg-[#FFFDF9] px-2 text-[11px] font-semibold text-[#3B2F2A] hover:bg-[#FFF5BA]"
+                  >
+                    ทุกวัน
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditingCmd({
+                        ...editingCmd,
+                        activeDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+                      })
+                    }
+                    className="min-h-[28px] rounded-lg border border-[#EBD8C3] bg-[#FFFDF9] px-2 text-[11px] font-semibold text-[#3B2F2A] hover:bg-[#FFF5BA]"
+                  >
+                    จ–ศ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditingCmd({
+                        ...editingCmd,
+                        activeDays: ['sat', 'sun', 'holiday'],
+                      })
+                    }
+                    className="min-h-[28px] rounded-lg border border-[#EBD8C3] bg-[#FFFDF9] px-2 text-[11px] font-semibold text-[#3B2F2A] hover:bg-[#FFF5BA]"
+                  >
+                    ส–อา + นักขัตฯ
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {DOOR_COMMAND_DAY_OPTIONS.map((opt) => {
+                  const selected = (editingCmd.activeDays || []).includes(opt.key);
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => toggleActiveDay(opt.key)}
+                      className={`min-h-[34px] rounded-xl border-2 px-3 text-xs font-bold transition-colors ${
+                        selected
+                          ? 'border-[#3B2F2A] bg-[#E7FAF6] text-[#114B43]'
+                          : 'border-[#EBD8C3] bg-[#FFFDF9] text-[#705F56]'
+                      }`}
+                    >
+                      {opt.shortTh}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -715,20 +814,39 @@ export const DoorCommandsManagerSection: React.FC<DoorCommandsManagerSectionProp
                 </div>
 
                 {selectedPenaltyMeta?.needsValue && (
-                  <div>
-                    <label className="mb-1 block text-xs font-bold text-[#9F1239]">
-                      จำนวน ({selectedPenaltyMeta.valueLabelTh})
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={500}
-                      value={editingCmd.penaltyValue}
-                      onChange={(e) =>
-                        setEditingCmd({ ...editingCmd, penaltyValue: Number(e.target.value) })
-                      }
-                      className="min-h-[44px] w-full rounded-xl border-2 border-[#F0A8B2] bg-white px-3 text-sm font-bold"
-                    />
+                  <div className={editingCmd.penaltyType === 'fine_per_min' ? 'grid grid-cols-2 gap-2' : ''}>
+                    <div>
+                      <label className="mb-1 block text-xs font-bold text-[#9F1239]">
+                        จำนวน ({selectedPenaltyMeta.valueLabelTh})
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={500}
+                        value={editingCmd.penaltyValue}
+                        onChange={(e) =>
+                          setEditingCmd({ ...editingCmd, penaltyValue: Number(e.target.value) })
+                        }
+                        className="min-h-[44px] w-full rounded-xl border-2 border-[#F0A8B2] bg-white px-3 text-sm font-bold"
+                      />
+                    </div>
+                    {editingCmd.penaltyType === 'fine_per_min' && (
+                      <div>
+                        <label className="mb-1 block text-xs font-bold text-[#9F1239]">
+                          ปรับสูงสุด (บาท)
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={5000}
+                          value={editingCmd.penaltyMaxThb ?? 50}
+                          onChange={(e) =>
+                            setEditingCmd({ ...editingCmd, penaltyMaxThb: Number(e.target.value) })
+                          }
+                          className="min-h-[44px] w-full rounded-xl border-2 border-[#F0A8B2] bg-white px-3 text-sm font-bold"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

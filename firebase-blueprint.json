@@ -189,6 +189,7 @@
         "allowedEmails": { "type": "array" },
         "holidayDate": { "type": "string", "maxLength": 10 },
         "doorCommands": { "type": "array" },
+        "bearStyle": { "type": "object" },
         "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128 },
         "updatedByUid": { "type": "string", "minLength": 1, "maxLength": 128 },
         "createdAt": { "type": "string", "format": "date-time" },

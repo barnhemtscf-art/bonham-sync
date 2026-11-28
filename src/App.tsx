@@ -37,6 +37,7 @@ import {
   Member,
 } from './types/barnhem';
 import {
+  createDefaultDoorCommands,
   executeDoorCommand,
   resolveDoorCommands,
 } from './utils/doorCommands';
@@ -63,6 +64,7 @@ import {
 } from './utils/pastelFrames';
 
 const STORAGE_KEY = 'barnhem_super_app_v1';
+const DOOR_COMMANDS_V2_MIGRATED_KEY = 'barnhem_door_cmds_v2_migrated';
 
 const ROLE_ORDER: Record<Member['role'], number> = {
   manager: 0,
@@ -105,11 +107,19 @@ function loadInitialState(): BarnhemState {
       }
       return m;
     });
+    const hasMigratedDoorV2 = window.localStorage.getItem(DOOR_COMMANDS_V2_MIGRATED_KEY) === '1';
+    const nextDoorCommands = hasMigratedDoorV2
+      ? parsed.settings?.doorCommands
+      : createDefaultDoorCommands(migratedMembers);
+    if (!hasMigratedDoorV2) {
+      window.localStorage.setItem(DOOR_COMMANDS_V2_MIGRATED_KEY, '1');
+    }
     return {
       ...parsed,
       members: migratedMembers,
       settings: {
         ...parsed.settings,
+        doorCommands: nextDoorCommands,
         allowedSyncEmails: normalizeAllowedEmails(parsed.settings?.allowedSyncEmails),
       },
     };
@@ -840,7 +850,7 @@ export default function App() {
       </header>
 
       {/* Main Content Container */}
-      <main className="no-print mx-auto max-w-7xl px-4 pt-6 sm:px-6">
+      <main className="no-print mx-auto max-w-7xl px-4 pt-3 sm:px-6 sm:pt-4">
         {!isSignedIn && (
           <MagicDoorView
             lang={lang}

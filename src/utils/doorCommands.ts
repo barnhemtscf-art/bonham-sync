@@ -1,9 +1,74 @@
 import {
   DoorCommandConfig,
+  DoorCommandDayKey,
   DoorCommandPenaltyType,
   Member,
 } from '../types/barnhem';
 import { addDaysToDateStr, formatDateStr, formatTimeHMS, minutesOfDay } from './rules';
+
+export const DOOR_COMMAND_DAY_OPTIONS: Array<{
+  key: DoorCommandDayKey;
+  shortTh: string;
+  labelTh: string;
+}> = [
+  { key: 'mon', shortTh: 'จ', labelTh: 'จันทร์' },
+  { key: 'tue', shortTh: 'อ', labelTh: 'อังคาร' },
+  { key: 'wed', shortTh: 'พ', labelTh: 'พุธ' },
+  { key: 'thu', shortTh: 'พฤ', labelTh: 'พฤหัสบดี' },
+  { key: 'fri', shortTh: 'ศ', labelTh: 'ศุกร์' },
+  { key: 'sat', shortTh: 'ส', labelTh: 'เสาร์' },
+  { key: 'sun', shortTh: 'อา', labelTh: 'อาทิตย์' },
+  { key: 'holiday', shortTh: 'นักขัตฯ', labelTh: 'วันหยุดนักขัตฤกษ์' },
+];
+
+export const ALL_DOOR_COMMAND_DAYS: DoorCommandDayKey[] = [
+  'mon',
+  'tue',
+  'wed',
+  'thu',
+  'fri',
+  'sat',
+  'sun',
+  'holiday',
+];
+
+const JS_DAY_TO_KEY: Record<number, DoorCommandDayKey> = {
+  0: 'sun',
+  1: 'mon',
+  2: 'tue',
+  3: 'wed',
+  4: 'thu',
+  5: 'fri',
+  6: 'sat',
+};
+
+export function getTodayDayKey(now: Date, isHolidayToday = false): DoorCommandDayKey {
+  if (isHolidayToday) return 'holiday';
+  return JS_DAY_TO_KEY[now.getDay()] || 'mon';
+}
+
+export function isDoorCommandActiveOnDay(
+  cmd: DoorCommandConfig,
+  now: Date,
+  isHolidayToday = false
+): boolean {
+  if (!Array.isArray(cmd.activeDays) || cmd.activeDays.length === 0) {
+    return true;
+  }
+  const todayKey = getTodayDayKey(now, isHolidayToday);
+  return cmd.activeDays.includes(todayKey);
+}
+
+export function formatActiveDaysLabel(activeDays?: DoorCommandDayKey[]): string {
+  if (!Array.isArray(activeDays) || activeDays.length === 0) {
+    return 'ทุกวัน';
+  }
+  if (activeDays.length >= ALL_DOOR_COMMAND_DAYS.length) {
+    return 'ทุกวัน + นักขัตฤกษ์';
+  }
+  const ordered = DOOR_COMMAND_DAY_OPTIONS.filter((opt) => activeDays.includes(opt.key));
+  return ordered.map((opt) => opt.shortTh).join(', ');
+}
 
 export function parseTimeHHMM(hhmm: string): number {
   const match = /^(\d{1,2}):(\d{2})$/.exec((hhmm || '').trim());
@@ -22,147 +87,296 @@ export function formatMinutesAsHHMM(mins: number): string {
 
 export function createDefaultDoorCommands(members: Member[]): DoorCommandConfig[] {
   const kids = members.filter((m) => m.role === 'kid');
+  const byId = (ids: string[]) => {
+    const existing = new Set(kids.map((k) => k.id));
+    const filtered = ids.filter((id) => existing.has(id));
+    return filtered.length > 0 ? filtered : [];
+  };
+
   const g1Ids = kids.filter((k) => k.ageGroup === 1).map((k) => k.id);
   const g2Ids = kids.filter((k) => k.ageGroup === 2).map((k) => k.id);
   const g3Ids = kids.filter((k) => k.ageGroup === 3).map((k) => k.id);
-  const g2And3Ids = [...g2Ids, ...g3Ids];
   const allKidIds = kids.map((k) => k.id);
+
+  // Exact subgroups matching spreadsheet roster
+  const jrPlusBow = byId(['j1', 'j2', 'j3', 'j4', 'j5', 's2']);
+  const g2SixOlder = byId(['s3', 's4', 's5', 's6', 's7', 's8']);
+  const nakFa = byId(['s9', 's10']);
+  const g2PlusBow = byId(['s3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's2']);
+  const g2SixPlusBow = byId(['s3', 's4', 's5', 's6', 's7', 's8', 's2']);
+  const sueaOnly = byId(['s1']);
 
   return [
     {
-      id: 'cmd_morning_phone',
-      titleTh: 'มาขอรับมือถือ',
-      descriptionTh: 'เช็คอินรับมือถือช่วงเช้าก่อนไปโรงเรียน / ฝึกงาน',
-      emoji: '📱',
-      startTime: '06:00',
-      endTime: '07:00',
-      earlyMinutes: 5,
-      deadlineTime: '07:00',
-      authMode: 'direct',
-      rewardStars: 5,
-      penaltyType: 'block',
-      penaltyValue: 0,
-      penaltyNoteTh: 'ล็อกเมื่อเลย 07:00 น.',
-      allowedKidIds: g2Ids.slice(0, 7).length > 0 ? g2Ids.slice(0, 7) : g2Ids,
-      enabled: true,
-    },
-    {
       id: 'cmd_breakfast',
+      commandKind: 'routine',
       titleTh: 'กินข้าวเช้า',
-      descriptionTh: 'เช็คอินทานข้าวเช้าน้องกลุ่ม 1 (ก่อน 06:40 น. รับ +5 ⭐)',
+      descriptionTh: 'เช็คอินทานข้าวเช้าน้องกลุ่ม 1 (ก่อน 06:40 น.)',
       emoji: '🍚',
-      startTime: '06:10',
-      endTime: '07:30',
-      earlyMinutes: 10,
+      activeDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+      startTime: '06:30',
+      endTime: '07:00',
+      earlyMinutes: 0,
       deadlineTime: '06:40',
-      authMode: 'staff_pin',
-      rewardStars: 5,
+      authMode: 'direct',
+      rewardStars: 10,
       penaltyType: 'none',
       penaltyValue: 0,
-      penaltyNoteTh: 'เลย 06:40 น. ไม่ได้รับดาวรอบเช้า',
+      penaltyNoteTh: 'ไม่มีค่าปรับ (ไม่ได้ดาว)',
       allowedKidIds: g1Ids,
       enabled: true,
     },
     {
-      id: 'cmd_school',
-      titleTh: 'ไปโรงเรียน',
-      descriptionTh: 'เช็คอินขึ้นรถตู้ / ออกเดินทางไปโรงเรียนหรือฝึกงาน',
+      id: 'cmd_school_jr',
+      commandKind: 'routine',
+      titleTh: 'ไปโรงเรียนเด็กเล็ก',
+      descriptionTh: 'เช็คอินขึ้นรถตู้ / ไปโรงเรียนหรือฝึกงาน',
       emoji: '🚌',
-      startTime: '06:30',
+      activeDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+      startTime: '06:40',
       endTime: '07:30',
-      earlyMinutes: 10,
+      earlyMinutes: 0,
+      deadlineTime: '07:01',
+      authMode: 'direct',
+      rewardStars: 10,
+      penaltyType: 'fine_per_min',
+      penaltyValue: 1,
+      penaltyMaxThb: 20,
+      penaltyNoteTh: 'ปรับเงินรายนาที (สูงสุด 20 บาท)',
+      allowedKidIds: jrPlusBow.length > 0 ? jrPlusBow : [...g1Ids, ...g3Ids.slice(1, 2)],
+      enabled: true,
+    },
+    {
+      id: 'cmd_school_sr',
+      commandKind: 'routine',
+      titleTh: 'ไปโรงเรียนเด็กโต',
+      descriptionTh: 'เช็คอินขึ้นรถตู้ / โรงเรียนเมืองถลาง',
+      emoji: '🚌',
+      activeDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+      startTime: '07:00',
+      endTime: '07:30',
+      earlyMinutes: 0,
       deadlineTime: '07:21',
-      authMode: 'staff_pin',
+      authMode: 'direct',
       rewardStars: 10,
       penaltyType: 'fine_per_min',
       penaltyValue: 5,
-      penaltyNoteTh: 'เลย 07:21 น. ปรับนาทีละ 5 บาท (สูงสุด 50 บาท · ยกเว้นป่วย/วันหยุด)',
-      allowedKidIds: allKidIds.filter((id) => id !== g3Ids[1]).slice(0, 14),
+      penaltyMaxThb: 50,
+      penaltyNoteTh: 'ปรับนาทีละ 5 บาท (สูงสุด 50 บ.)',
+      allowedKidIds: g2Ids,
+      enabled: true,
+    },
+    {
+      id: 'cmd_weekend_wake_sr',
+      commandKind: 'routine',
+      titleTh: 'เช็คอินตื่นวันเสาร์เด็กโต',
+      descriptionTh: 'เด็กโตจะต้องตั้งนาฬิกาปลุกด้วยตนเองเพื่อตื่นมาเช็คอิน',
+      emoji: '⏰',
+      activeDays: ['sat'],
+      startTime: '08:15',
+      endTime: '08:31',
+      earlyMinutes: 0,
+      deadlineTime: '08:31',
+      authMode: 'direct',
+      rewardStars: 20,
+      penaltyType: 'custom_task',
+      penaltyValue: 0,
+      customPenaltyLabelTh: 'งดใช้มือถือ 18:15-22:45 วันเสาร์ 1 วัน',
+      penaltyNoteTh: 'งดใช้มือถือ 18:15-22:45 วันเสาร์ 1 วัน',
+      allowedKidIds: g2SixOlder.length > 0 ? g2SixOlder : g2Ids.slice(0, 6),
+      enabled: true,
+    },
+    {
+      id: 'cmd_weekend_wake_jr',
+      commandKind: 'routine',
+      titleTh: 'อรุณสวัสวันเสาร์เด็กเล็ก',
+      descriptionTh: 'เด็กโตเมื่อได้ยินเสียงพี่เลี้ยงปลุกต้องมาเช็คอินเช้า',
+      emoji: '☀️',
+      activeDays: ['sat'],
+      startTime: '08:35',
+      endTime: '08:40',
+      earlyMinutes: 0,
+      deadlineTime: '08:40',
+      authMode: 'direct',
+      rewardStars: 20,
+      penaltyType: 'custom_task',
+      penaltyValue: 0,
+      customPenaltyLabelTh: 'งดสั่งเซเว่น',
+      penaltyNoteTh: 'งดสั่งเซเว่น',
+      allowedKidIds: nakFa.length > 0 ? nakFa : g2Ids.slice(6, 8),
+      enabled: true,
+    },
+    {
+      id: 'cmd_holiday_store_phone',
+      commandKind: 'routine',
+      titleTh: 'เก็บมือถือบ่ายวันหยุด',
+      descriptionTh: 'สำหรับผู้ที่ใช้โทรศัพท์มือถือจะต้องนำมือถือมาเก็บ',
+      emoji: '📵',
+      activeDays: ['sat', 'sun', 'holiday'],
+      startTime: '13:45',
+      endTime: '14:00',
+      earlyMinutes: 0,
+      deadlineTime: '14:00',
+      authMode: 'direct',
+      rewardStars: 10,
+      penaltyType: 'custom_task',
+      penaltyValue: 0,
+      customPenaltyLabelTh: 'งดใช้มือถือ 18:15-22:45 วันเสาร์ 1 วัน',
+      penaltyNoteTh: 'งดใช้มือถือ 18:15-22:45 วันเสาร์ 1 วัน',
+      allowedKidIds: g2PlusBow.length > 0 ? g2PlusBow : g2Ids,
       enabled: true,
     },
     {
       id: 'cmd_home',
+      commandKind: 'routine',
       titleTh: 'กลับบ้านแล้ว',
       descriptionTh: 'เช็คอินกลับถึงบ้านเรียบร้อย เก็บมือถือและเปลี่ยนชุด',
       emoji: '🏡',
+      activeDays: ['mon', 'tue', 'wed', 'thu', 'fri'],
       startTime: '15:00',
-      endTime: '17:00',
-      earlyMinutes: 15,
-      deadlineTime: '17:00',
+      endTime: '18:00',
+      earlyMinutes: 0,
+      deadlineTime: '18:00',
       authMode: 'direct',
-      rewardStars: 5,
+      rewardStars: 10,
       penaltyType: 'none',
       penaltyValue: 0,
-      penaltyNoteTh: 'เลยเวลาปิดรับเช็คอิน',
-      allowedKidIds: g2Ids.concat(g3Ids.slice(0, 1)),
+      penaltyNoteTh: 'ไม่มีค่าปรับ (ไม่ได้ดาว)',
+      allowedKidIds: g2PlusBow.length > 0 ? g2PlusBow : g2Ids,
       enabled: true,
     },
     {
       id: 'cmd_evening_phone',
+      commandKind: 'routine',
       titleTh: 'ตรวจชุด & รับมือถือ',
       descriptionTh: 'ซัก-รีด-ตรวจชุดนักเรียน & อาบน้ำเรียบร้อย รับมือถือรอบเย็น',
       emoji: '👕',
+      activeDays: ['mon', 'tue', 'wed', 'thu', 'sun'],
       startTime: '18:00',
       endTime: '20:30',
-      earlyMinutes: 10,
+      earlyMinutes: 0,
       deadlineTime: '19:30',
       authMode: 'direct',
       rewardStars: 10,
       penaltyType: 'none',
       penaltyValue: 0,
-      penaltyNoteTh: 'เลย 19:30 น. ไม่ได้รับโบนัสดาวตรงเวลา',
-      allowedKidIds: g2Ids.concat(g3Ids.slice(0, 1)),
+      penaltyNoteTh: 'ไม่มีค่าปรับ (ไม่ได้ดาว)',
+      allowedKidIds: g2PlusBow.length > 0 ? g2PlusBow : g2Ids,
+      enabled: true,
+    },
+    {
+      id: 'cmd_holiday_evening_phone',
+      commandKind: 'routine',
+      titleTh: 'ทำภารกิจเสร็จ/รับมือถือ',
+      descriptionTh: 'รับมือถือตอนเย็นวันหยุด',
+      emoji: '📱',
+      activeDays: ['fri', 'sat', 'sun'],
+      startTime: '18:15',
+      endTime: '20:00',
+      earlyMinutes: 0,
+      deadlineTime: '20:00',
+      authMode: 'kid_pin',
+      rewardStars: 10,
+      penaltyType: 'none',
+      penaltyValue: 0,
+      penaltyNoteTh: 'ไม่มีค่าปรับ (ไม่ได้ดาว)',
+      allowedKidIds: g2PlusBow.length > 0 ? g2PlusBow : g2Ids,
+      enabled: true,
+    },
+    {
+      id: 'cmd_computer_request',
+      commandKind: 'routine',
+      titleTh: 'ขออนุญาตใช้คอม',
+      descriptionTh: 'เฉพาะรุ่นเด็กโต (มัธยม) · ต้องซักผ้า ตากผ้า รีดผ้า อาบน้ำ และตรวจชุดครบ',
+      emoji: '💻',
+      activeDays: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun', 'holiday'],
+      startTime: '18:30',
+      endTime: '20:00',
+      earlyMinutes: 0,
+      deadlineTime: '20:00',
+      authMode: 'kid_pin',
+      rewardStars: 10,
+      penaltyType: 'block',
+      penaltyValue: 0,
+      penaltyNoteTh: 'ล็อกปุ่มทันที (ห้ามกด)',
+      allowedKidIds: nakFa.length > 0 ? nakFa : g2Ids.slice(6, 8),
       enabled: true,
     },
     {
       id: 'cmd_cartoon',
+      commandKind: 'routine',
       titleTh: 'ปลดล็อคดูการ์ตูน',
       descriptionTh: 'ผ่านด่านทบทวนภาษา 20:00 น. รับสิทธิ์ดูการ์ตูน 20:00–20:40 น.',
       emoji: '📺',
+      activeDays: ['mon', 'tue', 'wed', 'thu'],
       startTime: '20:00',
       endTime: '20:40',
-      earlyMinutes: 5,
+      earlyMinutes: 0,
       deadlineTime: '20:40',
-      authMode: 'direct',
+      authMode: 'kid_pin',
       rewardStars: 10,
       penaltyType: 'block',
       penaltyValue: 0,
-      penaltyNoteTh: 'หมดเวลาดูการ์ตูน 20:40 น.',
+      penaltyNoteTh: 'ล็อกปุ่มทันที (ห้ามกด)',
       allowedKidIds: g1Ids,
       enabled: true,
     },
     {
       id: 'cmd_homework',
+      commandKind: 'routine',
       titleTh: 'ขออนุญาตทำการบ้าน',
       descriptionTh: 'ลงทะเบียนใช้อุปกรณ์ทำการบ้านต่อหลัง 21:00 น. (ถึง 22:45 น.)',
       emoji: '✍️',
+      activeDays: ['mon', 'tue', 'wed', 'thu', 'sat', 'sun', 'holiday'],
       startTime: '20:30',
       endTime: '20:45',
-      earlyMinutes: 5,
+      earlyMinutes: 0,
       deadlineTime: '20:45',
       authMode: 'kid_pin',
-      rewardStars: 5,
+      rewardStars: 10,
       penaltyType: 'block',
       penaltyValue: 0,
-      penaltyNoteTh: 'ต้องขออนุญาตก่อน 20:45 น.',
-      allowedKidIds: g2Ids.concat(g3Ids.slice(0, 1)),
+      penaltyNoteTh: 'ล็อกปุ่มทันทีเมื่อเลยเส้นตาย',
+      allowedKidIds: g2SixPlusBow.length > 0 ? g2SixPlusBow : g2Ids,
       enabled: true,
     },
     {
       id: 'cmd_return_phone',
-      titleTh: 'คืนมือถือ',
-      descriptionTh: 'ส่งคืนมือถือเข้าตู้ก่อน Curfew 21:00 น.',
+      commandKind: 'routine',
+      titleTh: 'คืนมือถือหลังทำการบ้าน',
+      descriptionTh:
+        'ส่งคืนมือถือเข้าตู้พี่เลี้ยง (ระบบคำนวณเวลาอัตโนมัติ: ไม่ขอทำการบ้านคืนถึง 21:00 น. / ขอทำการบ้านแล้วคืนถึง 22:45 น.)',
       emoji: '🌙',
+      activeDays: ['mon', 'tue', 'wed', 'thu', 'sat', 'sun', 'holiday'],
       startTime: '20:46',
       endTime: '23:00',
-      earlyMinutes: 5,
+      earlyMinutes: 0,
       deadlineTime: '21:00',
       authMode: 'kid_pin',
-      rewardStars: 5,
+      rewardStars: 10,
       penaltyType: 'deduct_free_day',
       penaltyValue: 1,
-      penaltyNoteTh: 'คืนเกิน Curfew 21:00 น. หักสิทธิ์ Free Day วันศุกร์ 1 วัน',
-      allowedKidIds: g2And3Ids,
+      penaltyNoteTh: 'หัก Free Day 1 วัน',
+      allowedKidIds: g2SixPlusBow.length > 0 ? g2SixPlusBow : g2Ids,
+      enabled: true,
+    },
+    {
+      id: 'cmd_intern_return_phone',
+      commandKind: 'routine',
+      titleTh: 'คืนมือถือหลังจากฝึกงาน',
+      descriptionTh: 'คืนมือถือถึง 22:45',
+      emoji: '🌙',
+      activeDays: ['mon', 'tue', 'wed', 'thu', 'fri', 'sun', 'holiday'],
+      startTime: '22:00',
+      endTime: '23:00',
+      earlyMinutes: 0,
+      deadlineTime: '22:45',
+      authMode: 'kid_pin',
+      rewardStars: 10,
+      penaltyType: 'deduct_free_day',
+      penaltyValue: 1,
+      penaltyNoteTh: 'หักสิทธิ์ Free Day วันเสาร์ · หัก Free Day 1 วัน',
+      allowedKidIds: sueaOnly.length > 0 ? sueaOnly : g3Ids.slice(0, 1),
       enabled: true,
     },
     {
@@ -171,6 +385,7 @@ export function createDefaultDoorCommands(members: Member[]): DoorCommandConfig[
       titleTh: 'บทลงโทษ',
       descriptionTh: 'บันทึกบทลงโทษประจำวัน (พี่เลี้ยงใส่ PIN ยืนยันเพื่อบันทึกโทษทันที)',
       emoji: '⚖️',
+      activeDays: ['mon', 'tue', 'wed', 'thu', 'sat', 'sun', 'holiday'],
       startTime: '00:00',
       endTime: '23:59',
       earlyMinutes: 0,
@@ -179,7 +394,7 @@ export function createDefaultDoorCommands(members: Member[]): DoorCommandConfig[
       rewardStars: 0,
       penaltyType: 'deduct_free_day',
       penaltyValue: 1,
-      penaltyNoteTh: 'ทำผิดกติกาบ้าน — หักสิทธิ์ Free Day 1 วัน (หรือระบุรายละเอียดเพิ่มเติม)',
+      penaltyNoteTh: 'หัก Free Day 1 วัน',
       allowedKidIds: allKidIds,
       enabled: true,
     },
@@ -196,7 +411,26 @@ export function resolveDoorCommands(
   return createDefaultDoorCommands(members);
 }
 
+export function getEffectiveCommandDeadlineTime(
+  cmd: DoorCommandConfig,
+  now: Date,
+  kid?: Member | null
+): string {
+  if (cmd.id === 'cmd_return_phone' && kid) {
+    const todayStr = formatDateStr(now);
+    const dp = kid.dailyProgress.dateStr === todayStr ? kid.dailyProgress : null;
+    const hasHomeworkRequest = Boolean(
+      dp && (dp.completedCommandIds?.includes('cmd_homework') || dp.homeworkRegisteredSubject)
+    );
+    if (hasHomeworkRequest) {
+      return '22:45';
+    }
+  }
+  return cmd.deadlineTime || cmd.endTime;
+}
+
 export type DoorCommandWindowStatus =
+  | 'inactive_day'
   | 'before_window'
   | 'early_window'
   | 'open_ontime'
@@ -210,6 +444,7 @@ export interface DoorCommandAvailability {
   isLate: boolean;
   minutesLate: number;
   minutesUntilOpen: number;
+  effectiveDeadlineTime: string;
   badgeLabelTh: string;
   badgeLabelEn: string;
 }
@@ -217,14 +452,30 @@ export interface DoorCommandAvailability {
 export function getDoorCommandAvailability(
   cmd: DoorCommandConfig,
   now: Date,
-  isHolidayToday = false
+  isHolidayToday = false,
+  kid?: Member | null
 ): DoorCommandAvailability {
+  const effectiveDeadlineTime = getEffectiveCommandDeadlineTime(cmd, now, kid);
+
+  if (!isDoorCommandActiveOnDay(cmd, now, isHolidayToday)) {
+    return {
+      status: 'inactive_day',
+      canOpen: false,
+      isLate: false,
+      minutesLate: 0,
+      minutesUntilOpen: 0,
+      effectiveDeadlineTime,
+      badgeLabelTh: 'ไม่เปิดวันนี้',
+      badgeLabelEn: 'Off Day',
+    };
+  }
+
   const nowMins = minutesOfDay(now);
   const startMins = parseTimeHHMM(cmd.startTime);
   const endMins = Math.max(startMins, parseTimeHHMM(cmd.endTime));
   const earlyMins = Math.max(0, Math.min(180, Math.round(cmd.earlyMinutes || 0)));
   const openMins = Math.max(0, startMins - earlyMins);
-  const rawDeadlineMins = parseTimeHHMM(cmd.deadlineTime || cmd.endTime);
+  const rawDeadlineMins = parseTimeHHMM(effectiveDeadlineTime);
   const deadlineMins = Math.max(openMins, Math.min(endMins, rawDeadlineMins));
 
   if (nowMins < openMins) {
@@ -234,6 +485,7 @@ export function getDoorCommandAvailability(
       isLate: false,
       minutesLate: 0,
       minutesUntilOpen: openMins - nowMins,
+      effectiveDeadlineTime,
       badgeLabelTh: 'ล็อกนอกเวลา',
       badgeLabelEn: 'Locked',
     };
@@ -246,6 +498,7 @@ export function getDoorCommandAvailability(
       isLate: false,
       minutesLate: 0,
       minutesUntilOpen: 0,
+      effectiveDeadlineTime,
       badgeLabelTh: 'ล็อกนอกเวลา',
       badgeLabelEn: 'Closed',
     };
@@ -258,18 +511,24 @@ export function getDoorCommandAvailability(
       isLate: false,
       minutesLate: 0,
       minutesUntilOpen: 0,
+      effectiveDeadlineTime,
       badgeLabelTh: `ก่อนเวลาได้ (-${startMins - nowMins} น.)`,
       badgeLabelEn: `Early (-${startMins - nowMins}m)`,
     };
   }
 
-  if (nowMins <= deadlineMins || isHolidayToday) {
+  // Only waive lateness on holiday when the command is a non-holiday weekday routine
+  const waiveLateForHoliday =
+    isHolidayToday && (!cmd.activeDays || !cmd.activeDays.includes('holiday'));
+
+  if (nowMins <= deadlineMins || waiveLateForHoliday) {
     return {
       status: 'open_ontime',
       canOpen: true,
       isLate: false,
       minutesLate: 0,
       minutesUntilOpen: 0,
+      effectiveDeadlineTime,
       badgeLabelTh: 'เปิดให้กด',
       badgeLabelEn: 'Open',
     };
@@ -284,6 +543,7 @@ export function getDoorCommandAvailability(
       isLate: true,
       minutesLate,
       minutesUntilOpen: 0,
+      effectiveDeadlineTime,
       badgeLabelTh: 'เลยเส้นตาย',
       badgeLabelEn: 'Deadline Passed',
     };
@@ -295,6 +555,7 @@ export function getDoorCommandAvailability(
     isLate: true,
     minutesLate,
     minutesUntilOpen: 0,
+    effectiveDeadlineTime,
     badgeLabelTh: 'เลยเส้นตาย (บันทึกโทษ)',
     badgeLabelEn: 'Late (Penalty)',
   };
@@ -302,6 +563,7 @@ export function getDoorCommandAvailability(
 
 export function isDoorCommandExpired(availability: DoorCommandAvailability): boolean {
   return (
+    availability.status === 'inactive_day' ||
     availability.status === 'after_window' ||
     availability.status === 'locked_after_deadline'
   );
@@ -316,13 +578,19 @@ export function formatAuthModeLabel(authMode: DoorCommandConfig['authMode']): st
 export function formatPenaltyRuleLabel(
   penaltyType: DoorCommandPenaltyType,
   penaltyValue: number,
-  customPenaltyLabelTh?: string
+  customPenaltyLabelTh?: string,
+  penaltyMaxThb?: number
 ): string {
   switch (penaltyType) {
     case 'block':
       return 'ล็อกปุ่มทันทีเมื่อเลยเส้นตาย';
-    case 'fine_per_min':
-      return `ปรับนาทีละ ${Math.max(1, penaltyValue || 5)} บาท (สูงสุด 50 บ.)`;
+    case 'fine_per_min': {
+      const rate = Math.max(1, penaltyValue || 5);
+      const maxCap = Math.max(1, penaltyMaxThb || 50);
+      return rate === 1
+        ? `ปรับเงินรายนาที (สูงสุด ${maxCap} บาท)`
+        : `ปรับนาทีละ ${rate} บาท (สูงสุด ${maxCap} บ.)`;
+    }
     case 'fixed_fine':
       return `ปรับเงิน ${Math.max(1, penaltyValue || 10)} บาท`;
     case 'deduct_free_day':
@@ -336,7 +604,7 @@ export function formatPenaltyRuleLabel(
     case 'custom_task':
       return customPenaltyLabelTh?.trim() || 'บันทึกบทลงโทษ / เวรพิเศษ';
     default:
-      return 'ไม่ได้ดาวเมื่อเลยเส้นตาย';
+      return 'ไม่มีค่าปรับ (ไม่ได้ดาว)';
   }
 }
 
@@ -407,21 +675,25 @@ export function executeDoorCommand({
     };
   }
 
-  const availability = getDoorCommandAvailability(cmd, now, isHolidayToday);
+  const availability = getDoorCommandAvailability(cmd, now, isHolidayToday, kid);
   if (!availability.canOpen) {
     return {
       ok: false,
       updatedMember: kid,
       titleTh:
-        availability.status === 'locked_after_deadline'
-          ? `เลยเส้นตาย ${cmd.deadlineTime} น. แล้ว`
-          : 'อยู่นอกเวลากดคำสั่ง',
-      messageTh:
-        availability.status === 'before_window'
-          ? `ปุ่ม "${cmd.titleTh}" เปิดเวลา ${cmd.startTime}–${cmd.endTime} น. (กดก่อนได้ ${cmd.earlyMinutes} นาที · อีก ${availability.minutesUntilOpen} นาทีจะเปิด)`
+        availability.status === 'inactive_day'
+          ? `ปุ่ม "${cmd.titleTh}" ไม่เปิดใช้วันนี้`
           : availability.status === 'locked_after_deadline'
-            ? `ปุ่ม "${cmd.titleTh}" กำหนดเส้นตายไม่เกิน ${cmd.deadlineTime} น. (${cmd.penaltyNoteTh || 'ล็อกปุ่มอัตโนมัติ'})`
-            : `หมดเวลาสำหรับปุ่ม "${cmd.titleTh}" (${cmd.startTime}–${cmd.endTime} น.)`,
+            ? `เลยเส้นตาย ${availability.effectiveDeadlineTime} น. แล้ว`
+            : 'อยู่นอกเวลากดคำสั่ง',
+      messageTh:
+        availability.status === 'inactive_day'
+          ? `ปุ่ม "${cmd.titleTh}" กำหนดใช้งานเฉพาะวัน ${formatActiveDaysLabel(cmd.activeDays)}`
+          : availability.status === 'before_window'
+            ? `ปุ่ม "${cmd.titleTh}" เปิดเวลา ${cmd.startTime}–${cmd.endTime} น. (กดก่อนได้ ${cmd.earlyMinutes} นาที · อีก ${availability.minutesUntilOpen} นาทีจะเปิด)`
+            : availability.status === 'locked_after_deadline'
+              ? `ปุ่ม "${cmd.titleTh}" กำหนดเส้นตายไม่เกิน ${availability.effectiveDeadlineTime} น. (${cmd.penaltyNoteTh || 'ล็อกปุ่มอัตโนมัติ'})`
+              : `หมดเวลาสำหรับปุ่ม "${cmd.titleTh}" (${cmd.startTime}–${cmd.endTime} น.)`,
       tone: 'yellow',
     };
   }
@@ -563,7 +835,9 @@ export function executeDoorCommand({
   }
 
   // Evaluate routine reward or late penalty
-  const isExcused = Boolean(dp.isSickToday) || isHolidayToday;
+  const waiveLateForHoliday =
+    isHolidayToday && (!cmd.activeDays || !cmd.activeDays.includes('holiday'));
+  const isExcused = Boolean(dp.isSickToday) || waiveLateForHoliday;
   let starsAwarded = 0;
   let starsDeductedLate = 0;
   let fineThb = 0;
@@ -577,9 +851,11 @@ export function executeDoorCommand({
   } else {
     const minsLate = Math.max(1, availability.minutesLate);
     switch (cmd.penaltyType) {
-      case 'fine_per_min':
-        fineThb = Math.min(50, minsLate * Math.max(1, cmd.penaltyValue || 5));
+      case 'fine_per_min': {
+        const maxCap = Math.max(1, cmd.penaltyMaxThb || 50);
+        fineThb = Math.min(maxCap, minsLate * Math.max(1, cmd.penaltyValue || 5));
         break;
+      }
       case 'fixed_fine':
         fineThb = Math.max(1, cmd.penaltyValue || 10);
         break;
@@ -588,18 +864,18 @@ export function executeDoorCommand({
         break;
       case 'deduct_free_day':
         freeDayPenaltyDelta = Math.max(1, cmd.penaltyValue || 1);
-        phoneBlockedReason = `${cmd.titleTh} เกิน ${cmd.deadlineTime} น. (หัก Free Day ${freeDayPenaltyDelta} วัน)`;
+        phoneBlockedReason = `${cmd.titleTh} เกิน ${availability.effectiveDeadlineTime} น. (หัก Free Day ${freeDayPenaltyDelta} วัน)`;
         break;
       case 'block_phone_today':
-        phoneBlockedReason = `${cmd.titleTh} เกิน ${cmd.deadlineTime} น. งดใช้มือถือถึง 18:30 น.`;
+        phoneBlockedReason = `${cmd.titleTh} เกิน ${availability.effectiveDeadlineTime} น. งดใช้มือถือถึง 18:30 น.`;
         phoneBlockedUntilDate = todayStr;
         break;
       case 'block_phone_tomorrow':
-        phoneBlockedReason = `${cmd.titleTh} เกิน ${cmd.deadlineTime} น. งดใช้มือถือวันพรุ่งนี้ 1 วัน`;
+        phoneBlockedReason = `${cmd.titleTh} เกิน ${availability.effectiveDeadlineTime} น. งดใช้มือถือวันพรุ่งนี้ 1 วัน`;
         phoneBlockedUntilDate = addDaysToDateStr(todayStr, 1);
         break;
       case 'custom_task':
-        customTaskSummary = `${cmd.titleTh} เกิน ${cmd.deadlineTime} น. (${configuredCustomLabel || effectivePenaltyNote})`;
+        customTaskSummary = `${cmd.titleTh} เกิน ${availability.effectiveDeadlineTime} น. (${configuredCustomLabel || effectivePenaltyNote})`;
         break;
       default:
         break;
@@ -612,9 +888,14 @@ export function executeDoorCommand({
   };
   let extraCartoonUnlock: boolean | undefined;
 
-  if (cmd.id === 'cmd_morning_phone' || cmd.id === 'cmd_school') {
+  if (
+    cmd.id === 'cmd_morning_phone' ||
+    cmd.id === 'cmd_school' ||
+    cmd.id === 'cmd_school_jr' ||
+    cmd.id === 'cmd_school_sr'
+  ) {
     progressPatch.morningPhoneCheckedOut = true;
-    if (kid.ageGroup === 1 && cmd.id === 'cmd_school') progressPatch.vanDone = true;
+    if (kid.ageGroup === 1) progressPatch.vanDone = true;
   } else if (cmd.id === 'cmd_breakfast') {
     progressPatch.breakfastDone = true;
   } else if (cmd.id === 'cmd_home') {
@@ -622,15 +903,16 @@ export function executeDoorCommand({
     if (kid.ageGroup === 1 && !dp.speedyNinjaStartMs) {
       progressPatch.speedyNinjaStartMs = now.getTime();
     }
-  } else if (cmd.id === 'cmd_evening_phone') {
+  } else if (cmd.id === 'cmd_evening_phone' || cmd.id === 'cmd_holiday_evening_phone') {
     progressPatch.eveningChecklistDone = true;
     progressPatch.eveningPhoneUnlocked = true;
   } else if (cmd.id === 'cmd_cartoon') {
     progressPatch.bossStageDone = true;
     extraCartoonUnlock = true;
   } else if (cmd.id === 'cmd_homework') {
-    progressPatch.homeworkRegisteredSubject = dp.homeworkRegisteredSubject || 'ทำการบ้าน (จากปุ่มหน้าประตู)';
-  } else if (cmd.id === 'cmd_return_phone') {
+    progressPatch.homeworkRegisteredSubject =
+      dp.homeworkRegisteredSubject || 'ทำการบ้าน (จากปุ่มหน้าประตู)';
+  } else if (cmd.id === 'cmd_return_phone' || cmd.id === 'cmd_intern_return_phone') {
     progressPatch.phoneReturnedDone = true;
   }
 
@@ -648,7 +930,7 @@ export function executeDoorCommand({
       reason:
         phoneBlockedReason ||
         customTaskSummary ||
-        `${cmd.titleTh} เกินเส้นตาย ${cmd.deadlineTime} น. (${availability.minutesLate} นาที)`,
+        `${cmd.titleTh} เกินเส้นตาย ${availability.effectiveDeadlineTime} น. (${availability.minutesLate} นาที)`,
       fineThb,
       phoneRestrictedUntil: phoneBlockedReason,
       freeDayDeducted: freeDayPenaltyDelta || undefined,

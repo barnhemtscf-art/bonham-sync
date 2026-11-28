@@ -16,12 +16,15 @@ import { BOOTSTRAP_ADMIN_EMAIL, db, handleFirestoreError, OperationType } from '
 import {
   AppSettings,
   BarnhemState,
+  BearAppearanceConfig,
   DoorCommandConfig,
+  DoorCommandDayKey,
   Member,
   ShopItem,
   SickReport,
   SnackBill,
 } from '../types/barnhem';
+import { resolveBearAppearance } from '../utils/bearStyle';
 import { getSafePiggyBank } from '../utils/piggyBank';
 
 export function normalizeAllowedEmails(emails?: string[]): string[] {
@@ -42,32 +45,65 @@ function clampString(val: string | undefined, maxLen: number): string {
   return (val || '').trim().slice(0, maxLen);
 }
 
+const VALID_DOOR_DAY_KEYS = new Set<DoorCommandDayKey>([
+  'mon',
+  'tue',
+  'wed',
+  'thu',
+  'fri',
+  'sat',
+  'sun',
+  'holiday',
+]);
+
+export function sanitizeBearStyleForFirestore(
+  raw?: Partial<BearAppearanceConfig> | null
+): BearAppearanceConfig {
+  return resolveBearAppearance(raw);
+}
+
 export function sanitizeDoorCommandsForFirestore(cmds?: DoorCommandConfig[]): DoorCommandConfig[] {
   if (!Array.isArray(cmds)) return [];
-  return cmds.slice(0, 30).map((c, idx) => ({
-    id: clampString(c.id, 64) || `cmd_${idx}`,
-    commandKind: c.commandKind === 'penalty' ? ('penalty' as const) : ('routine' as const),
-    titleTh: clampString(c.titleTh, 80) || 'คำสั่ง',
-    descriptionTh: clampString(c.descriptionTh, 200),
-    emoji: clampString(c.emoji, 16) || '✨',
-    startTime: clampString(c.startTime, 5) || '06:00',
-    endTime: clampString(c.endTime, 5) || '23:00',
-    earlyMinutes: Math.max(0, Math.min(180, Math.round(Number(c.earlyMinutes) || 0))),
-    deadlineTime: clampString(c.deadlineTime, 5) || '21:00',
-    authMode:
-      c.authMode === 'kid_pin' || c.authMode === 'staff_pin' ? c.authMode : ('direct' as const),
-    rewardStars: Math.max(0, Math.min(1000, Math.round(Number(c.rewardStars) || 0))),
-    penaltyType: (c.penaltyType || 'none') as DoorCommandConfig['penaltyType'],
-    penaltyValue: Math.max(0, Math.min(1000, Math.round(Number(c.penaltyValue) || 0))),
-    penaltyNoteTh: clampString(c.penaltyNoteTh, 200),
-    ...(c.customPenaltyLabelTh
-      ? { customPenaltyLabelTh: clampString(c.customPenaltyLabelTh, 120) }
-      : {}),
-    allowedKidIds: Array.isArray(c.allowedKidIds)
-      ? c.allowedKidIds.slice(0, 50).map((id) => clampString(id, 64)).filter(Boolean)
-      : [],
-    enabled: Boolean(c.enabled),
-  }));
+  return cmds.slice(0, 30).map((c, idx) => {
+    const cleanDays = Array.isArray(c.activeDays)
+      ? Array.from(
+          new Set(
+            c.activeDays.filter((d): d is DoorCommandDayKey => VALID_DOOR_DAY_KEYS.has(d))
+          )
+        ).slice(0, 8)
+      : undefined;
+    const cleanMaxThb =
+      c.penaltyType === 'fine_per_min' && typeof c.penaltyMaxThb === 'number' && c.penaltyMaxThb > 0
+        ? Math.max(1, Math.min(5000, Math.round(c.penaltyMaxThb)))
+        : undefined;
+
+    return {
+      id: clampString(c.id, 64) || `cmd_${idx}`,
+      commandKind: c.commandKind === 'penalty' ? ('penalty' as const) : ('routine' as const),
+      titleTh: clampString(c.titleTh, 80) || 'คำสั่ง',
+      descriptionTh: clampString(c.descriptionTh, 200),
+      emoji: clampString(c.emoji, 16) || '✨',
+      ...(cleanDays && cleanDays.length > 0 ? { activeDays: cleanDays } : {}),
+      startTime: clampString(c.startTime, 5) || '06:00',
+      endTime: clampString(c.endTime, 5) || '23:00',
+      earlyMinutes: Math.max(0, Math.min(180, Math.round(Number(c.earlyMinutes) || 0))),
+      deadlineTime: clampString(c.deadlineTime, 5) || '21:00',
+      authMode:
+        c.authMode === 'kid_pin' || c.authMode === 'staff_pin' ? c.authMode : ('direct' as const),
+      rewardStars: Math.max(0, Math.min(1000, Math.round(Number(c.rewardStars) || 0))),
+      penaltyType: (c.penaltyType || 'none') as DoorCommandConfig['penaltyType'],
+      penaltyValue: Math.max(0, Math.min(1000, Math.round(Number(c.penaltyValue) || 0))),
+      ...(cleanMaxThb ? { penaltyMaxThb: cleanMaxThb } : {}),
+      penaltyNoteTh: clampString(c.penaltyNoteTh, 200),
+      ...(c.customPenaltyLabelTh
+        ? { customPenaltyLabelTh: clampString(c.customPenaltyLabelTh, 120) }
+        : {}),
+      allowedKidIds: Array.isArray(c.allowedKidIds)
+        ? c.allowedKidIds.slice(0, 50).map((id) => clampString(id, 64)).filter(Boolean)
+        : [],
+      enabled: Boolean(c.enabled),
+    };
+  });
 }
 
 function sanitizePiggyBankForFirestore(member: Member) {
@@ -311,6 +347,7 @@ export async function seedFoundationIfEmpty(
       allowedEmails,
       holidayDate: clampString(localState.settings.holidayDate, 10),
       doorCommands: sanitizeDoorCommandsForFirestore(localState.settings.doorCommands),
+      bearStyle: sanitizeBearStyleForFirestore(localState.settings.bearStyle),
       ownerUid: uid,
       updatedByUid: uid,
       createdAt: serverTimestamp(),
@@ -483,6 +520,10 @@ export function subscribeToFoundationCloudSync(
           doorCommands:
             Array.isArray(raw.doorCommands) && raw.doorCommands.length > 0
               ? sanitizeDoorCommandsForFirestore(raw.doorCommands as DoorCommandConfig[])
+              : undefined,
+          bearStyle:
+            raw.bearStyle && typeof raw.bearStyle === 'object'
+              ? sanitizeBearStyleForFirestore(raw.bearStyle as Partial<BearAppearanceConfig>)
               : undefined,
         });
       },
@@ -678,6 +719,22 @@ export async function updateDoorCommandsInCloud(
   try {
     await updateDoc(doc(db, 'foundation_settings', 'main'), {
       doorCommands: sanitizeDoorCommandsForFirestore(doorCommands),
+      updatedByUid: uid,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, path);
+  }
+}
+
+export async function updateBearStyleInCloud(
+  bearStyle: BearAppearanceConfig,
+  uid: string
+): Promise<void> {
+  const path = 'foundation_settings/main';
+  try {
+    await updateDoc(doc(db, 'foundation_settings', 'main'), {
+      bearStyle: sanitizeBearStyleForFirestore(bearStyle),
       updatedByUid: uid,
       updatedAt: serverTimestamp(),
     });

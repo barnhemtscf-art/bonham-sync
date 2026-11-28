@@ -168,6 +168,16 @@ export type DoorCommandKind = 'routine' | 'penalty';
 
 export type DoorCommandAuthMode = 'direct' | 'kid_pin' | 'staff_pin';
 
+export type DoorCommandDayKey =
+  | 'mon'
+  | 'tue'
+  | 'wed'
+  | 'thu'
+  | 'fri'
+  | 'sat'
+  | 'sun'
+  | 'holiday';
+
 export type DoorCommandPenaltyType =
   | 'block'
   | 'fine_per_min'
@@ -185,6 +195,7 @@ export interface DoorCommandConfig {
   titleTh: string;
   descriptionTh: string;
   emoji: string;
+  activeDays?: DoorCommandDayKey[];
   startTime: string; // HH:MM
   endTime: string; // HH:MM
   earlyMinutes: number; // allowed minutes before startTime
@@ -193,10 +204,25 @@ export interface DoorCommandConfig {
   rewardStars: number;
   penaltyType: DoorCommandPenaltyType;
   penaltyValue: number;
+  penaltyMaxThb?: number;
   penaltyNoteTh: string;
   customPenaltyLabelTh?: string;
   allowedKidIds: string[];
   enabled: boolean;
+}
+
+export type BearHatStyle = 'beret_bow' | 'beret' | 'headband_bow' | 'cap' | 'none';
+export type BearOutfitStyle = 'cardigan_scarf' | 'hoodie' | 'overall' | 'blazer';
+export type BearPropStyle = 'laptop' | 'tablet' | 'headphones' | 'none';
+export type BearColorTone = 'blush' | 'sky' | 'mint' | 'lavender' | 'butter' | 'mocha';
+
+export interface BearAppearanceConfig {
+  glasses: boolean;
+  hat: BearHatStyle;
+  outfit: BearOutfitStyle;
+  outfitColor: BearColorTone;
+  hasScarf: boolean;
+  prop: BearPropStyle;
 }
 
 export interface AppSettings {
@@ -205,6 +231,7 @@ export interface AppSettings {
   allowedSyncEmails?: string[];
   holidayDate?: string; // YYYY-MM-DD when holiday/school-break mode is active
   doorCommands?: DoorCommandConfig[];
+  bearStyle?: BearAppearanceConfig;
 }
 
 export interface BarnhemState {

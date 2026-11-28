@@ -1,11 +1,8 @@
 import React, { useState } from 'react';
 import {
-  BookOpen,
   Camera,
   CheckCircle2,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   ChevronUp,
   Clock,
   Cloud,
@@ -19,7 +16,6 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { DAILY_VOCAB_LIST } from '../data/dailyVocab';
 import {
   AlertModalPayload,
   DoorCommandConfig,
@@ -27,9 +23,11 @@ import {
   Member,
 } from '../types/barnhem';
 import {
+  formatActiveDaysLabel,
   formatAuthModeLabel,
   formatPenaltyRuleLabel,
   getDoorCommandAvailability,
+  getEffectiveCommandDeadlineTime,
   isDoorCommandExpired,
 } from '../utils/doorCommands';
 import { formatDateStr, formatTimeHMS, getLaundryQueue } from '../utils/rules';
@@ -86,7 +84,6 @@ export const MagicDoorView: React.FC<MagicDoorViewProps> = ({
 }) => {
   const [loginInput, setLoginInput] = useState('');
   const [showSecret, setShowSecret] = useState(false);
-  const [vocabOffset, setVocabOffset] = useState(0);
   const [showCloudDrawer, setShowCloudDrawer] = useState(false);
   const [internalFrameId, setInternalFrameId] = useState<PastelFrameId>(() =>
     loadSavedPortalFrameId()
@@ -117,10 +114,6 @@ export const MagicDoorView: React.FC<MagicDoorViewProps> = ({
 
   const todayStr = formatDateStr(now);
   const laundry = getLaundryQueue(now);
-  const vocabIndex =
-    (((now.getDate() - 1 + vocabOffset) % DAILY_VOCAB_LIST.length) + DAILY_VOCAB_LIST.length) %
-    DAILY_VOCAB_LIST.length;
-  const dailyWord = DAILY_VOCAB_LIST[vocabIndex];
 
   const dateFormatted = now.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', {
     weekday: 'long',
@@ -158,7 +151,7 @@ export const MagicDoorView: React.FC<MagicDoorViewProps> = ({
           availability.status === 'before_window'
             ? `เปิดให้กดเวลา ${cmd.startTime}–${cmd.endTime} น. (กดก่อนเวลาได้ ${cmd.earlyMinutes} นาที · อีก ${availability.minutesUntilOpen} นาทีจะเปิด)`
             : availability.status === 'locked_after_deadline'
-              ? `ปุ่มนี้กำหนดเส้นตายไม่เกิน ${cmd.deadlineTime} น. (${cmd.penaltyNoteTh || formatPenaltyRuleLabel(cmd.penaltyType, cmd.penaltyValue, cmd.customPenaltyLabelTh)})`
+              ? `ปุ่มนี้กำหนดเส้นตายไม่เกิน ${cmd.deadlineTime} น. (${cmd.penaltyNoteTh || formatPenaltyRuleLabel(cmd.penaltyType, cmd.penaltyValue, cmd.customPenaltyLabelTh, cmd.penaltyMaxThb)})`
               : `หมดเวลาสำหรับปุ่มนี้แล้ว (${cmd.startTime}–${cmd.endTime} น.)`,
         tone: 'yellow',
       });
@@ -240,10 +233,10 @@ export const MagicDoorView: React.FC<MagicDoorViewProps> = ({
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 py-2 md:py-5">
+    <div className="mx-auto max-w-4xl space-y-4 py-1 md:py-2">
       {/* Japanese Minimal Pastel Framed Cover Card */}
       <section
-        className="pastel-card rounded-[36px] border-2 p-2.5 transition-colors duration-200 sm:p-4"
+        className="pastel-card rounded-[32px] border-2 p-2.5 transition-colors duration-200 sm:p-3.5"
         style={{
           backgroundColor: theme.frameBg,
           borderColor: theme.frameBorder,
@@ -252,7 +245,7 @@ export const MagicDoorView: React.FC<MagicDoorViewProps> = ({
         <div className="flex flex-col items-stretch gap-2.5 sm:flex-row sm:gap-3.5">
           {/* Crisp Washi Paper Minimal Inner Sheet */}
           <div
-            className="relative min-w-0 flex-1 overflow-hidden rounded-[26px] border bg-white/95 p-5 transition-colors duration-200 sm:p-8"
+            className="relative min-w-0 flex-1 overflow-hidden rounded-[24px] border bg-white/95 p-4 transition-colors duration-200 sm:p-6"
             style={{ borderColor: theme.innerBorder }}
           >
             <div className="relative z-10 grid grid-cols-1 items-center gap-6 lg:grid-cols-12">
@@ -382,217 +375,14 @@ export const MagicDoorView: React.FC<MagicDoorViewProps> = ({
         </div>
       </section>
 
-      {/* Door Command Buttons Section with Peeking Bear Star-Check Mascot */}
-      <div className="relative pt-[140px] sm:pt-[156px]">
-        <button
-          type="button"
-          onClick={handleOpenBearStarModal}
-          data-testid="bear-star-check-trigger"
-          aria-label={
-            lang === 'th'
-              ? 'รูปหัวน้องหมีเพื่อเช็คยอดสะสมดาว'
-              : 'Tap bear head to check accumulated stars'
-          }
-          className="group absolute left-1/2 top-0 z-20 flex -translate-x-1/2 cursor-pointer flex-col items-center focus-visible:outline-none"
-        >
-          {/* Speech label right above the bear's head */}
-          <span
-            className="relative whitespace-nowrap rounded-2xl border-2 bg-white px-3 py-1.5 text-center text-[11px] font-bold shadow-sm transition-transform duration-200 group-hover:-translate-y-0.5 group-focus-visible:ring-2 group-focus-visible:ring-[#3B2F2A] sm:px-3.5 sm:text-xs"
-            style={{
-              borderColor: theme.accentBorder,
-              color: theme.accentText,
-            }}
-          >
-            {lang === 'th'
-              ? 'รูปหัวน้องหมีเพื่อเช็คยอดสะสมดาว'
-              : 'Tap bear head to check your stars'}
-            <span
-              aria-hidden="true"
-              className="absolute -bottom-[7px] left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-b-2 border-r-2 bg-white"
-              style={{ borderColor: theme.accentBorder }}
-            />
-          </span>
-
-          {/* Stylish IT girl bear (right-side bear style: beret, yellow scarf, eyelashes, glasses & laptop) */}
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 176 134"
-            className="mt-1 h-[118px] w-[154px] drop-shadow-sm transition-transform duration-200 group-hover:-translate-y-0.5 group-active:scale-[0.98] sm:h-[134px] sm:w-[176px]"
-          >
-            {/* Left & Right round ears */}
-            <circle cx="48" cy="30" r="14.5" fill="#E6BE9A" stroke="#5B4031" strokeWidth="2.6" />
-            <circle cx="48" cy="30" r="8" fill="#F9DEC9" />
-            <circle cx="128" cy="30" r="14.5" fill="#E6BE9A" stroke="#5B4031" strokeWidth="2.6" />
-            <circle cx="128" cy="30" r="8" fill="#F9DEC9" />
-
-            {/* Bear upper body & stylish pastel cardigan */}
-            <path
-              d="M42 121 C42 90, 58 78, 88 78 C118 78, 134 90, 134 121 Z"
-              fill="#F8D8DF"
-              stroke="#5B4031"
-              strokeWidth="2.6"
-              strokeLinejoin="round"
-            />
-            {/* Cream inner blouse */}
-            <path
-              d="M72 80 L88 98 L104 80 Z"
-              fill="#FFF9F2"
-              stroke="#5B4031"
-              strokeWidth="2"
-              strokeLinejoin="round"
-            />
-
-            {/* Fashionable yellow neckerchief / scarf (matching right-side bear) */}
-            <path
-              d="M57 78 Q88 92 119 78 Q121 87 112 91 Q88 100 64 91 Q55 87 57 78 Z"
-              fill="#FCE08B"
-              stroke="#5B4031"
-              strokeWidth="2.4"
-              strokeLinejoin="round"
-            />
-            {/* Scarf knot & ribbon tail on the left shoulder */}
-            <path
-              d="M64 87 L56 101 L68 103 L73 91 Z"
-              fill="#F7D06B"
-              stroke="#5B4031"
-              strokeWidth="2.2"
-              strokeLinejoin="round"
-            />
-            <circle cx="67" cy="88" r="5" fill="#FCE08B" stroke="#5B4031" strokeWidth="2.2" />
-
-            {/* Bear chubby head (creamy beige fur) */}
-            <ellipse cx="88" cy="54" rx="43" ry="33" fill="#E6BE9A" stroke="#5B4031" strokeWidth="2.6" />
-
-            {/* Stylish beret hat tilted on top (matching right-side bear) + cute pink bow pin */}
-            <path
-              d="M84 9 C86 4, 91 4, 93 9"
-              fill="none"
-              stroke="#5B4031"
-              strokeWidth="2.4"
-              strokeLinecap="round"
-            />
-            <path
-              d="M55 28 C53 15, 72 8, 92 9 C112 10, 125 18, 121 29 C106 23, 71 23, 55 28 Z"
-              fill="#F6E2CC"
-              stroke="#5B4031"
-              strokeWidth="2.5"
-              strokeLinejoin="round"
-            />
-            {/* Beret brim band */}
-            <path
-              d="M57 28 Q88 21 119 28"
-              fill="none"
-              stroke="#5B4031"
-              strokeWidth="2.3"
-              strokeLinecap="round"
-            />
-            {/* Cute coral-pink bow accent on the beret */}
-            <path
-              d="M111 19 L103 14 L105 22 Z M111 19 L120 15 L117 23 Z"
-              fill="#F48FB1"
-              stroke="#5B4031"
-              strokeWidth="1.8"
-              strokeLinejoin="round"
-            />
-            <circle cx="111" cy="19" r="2.6" fill="#F9A8C2" stroke="#5B4031" strokeWidth="1.6" />
-
-            {/* Rosy cheeks */}
-            <ellipse cx="59" cy="63" rx="7" ry="4.2" fill="#F4A4B8" opacity="0.9" />
-            <ellipse cx="117" cy="63" rx="7" ry="4.2" fill="#F4A4B8" opacity="0.9" />
-
-            {/* Cute feminine eyes with subtle lashes */}
-            <path d="M62 50 L59 47.5 M63 53 L59.5 52" stroke="#3D2A20" strokeWidth="1.7" strokeLinecap="round" />
-            <path d="M114 50 L117 47.5 M113 53 L116.5 52" stroke="#3D2A20" strokeWidth="1.7" strokeLinecap="round" />
-            <circle cx="71" cy="54" r="3.9" fill="#3D2A20" />
-            <circle cx="72.4" cy="52.5" r="1.4" fill="#FFFFFF" />
-            <circle cx="105" cy="54" r="3.9" fill="#3D2A20" />
-            <circle cx="106.4" cy="52.5" r="1.4" fill="#FFFFFF" />
-
-            {/* Cream muzzle, button nose & kawaii 'w' smile */}
-            <ellipse cx="88" cy="63" rx="12.5" ry="9" fill="#FDF5EC" />
-            <ellipse cx="88" cy="59.5" rx="4" ry="2.8" fill="#4A3224" />
-            <path
-              d="M88 62.3 L88 64.5 M82.8 65 Q85.4 68.2 88 64.8 Q90.6 68.2 93.2 65"
-              fill="none"
-              stroke="#4A3224"
-              strokeWidth="2.1"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-
-            {/* Chic round rose-bronze glasses */}
-            <circle cx="70.5" cy="54" r="11.5" fill="#FFFFFF" fillOpacity="0.28" stroke="#6D4438" strokeWidth="2.4" />
-            <circle cx="105.5" cy="54" r="11.5" fill="#FFFFFF" fillOpacity="0.28" stroke="#6D4438" strokeWidth="2.4" />
-            <path d="M82 53.5 Q88 51 94 53.5" fill="none" stroke="#6D4438" strokeWidth="2.3" strokeLinecap="round" />
-            <line x1="46" y1="51" x2="59" y2="53.5" stroke="#6D4438" strokeWidth="2.3" strokeLinecap="round" />
-            <line x1="117" y1="53.5" x2="130" y2="51" stroke="#6D4438" strokeWidth="2.3" strokeLinecap="round" />
-            <path d="M64 48.5 L67.5 45.5" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" opacity="0.85" />
-            <path d="M99 48.5 L102.5 45.5" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" opacity="0.85" />
-
-            {/* Left & Right arms reaching to the sleek IT laptop */}
-            <ellipse cx="44" cy="107" rx="11" ry="8" transform="rotate(-18 44 107)" fill="#E6BE9A" stroke="#5B4031" strokeWidth="2.5" />
-            <ellipse cx="132" cy="107" rx="11" ry="8" transform="rotate(18 132 107)" fill="#E6BE9A" stroke="#5B4031" strokeWidth="2.5" />
-
-            {/* Stylish pastel IT laptop in front of the bear */}
-            <rect
-              x="51"
-              y="83"
-              width="74"
-              height="38"
-              rx="7.5"
-              fill="#F5F7FB"
-              stroke="#5B4031"
-              strokeWidth="2.6"
-            />
-            <rect
-              x="56"
-              y="88"
-              width="64"
-              height="28"
-              rx="4.5"
-              fill="#E3ECF7"
-            />
-            {/* Gold star emblem on laptop lid */}
-            <path
-              d="M88 93.5 L90.6 98.8 L96.4 99.6 L92.2 103.7 L93.2 109.5 L88 106.7 L82.8 109.5 L83.8 103.7 L79.6 99.6 L85.4 98.8 Z"
-              fill="#FACC15"
-              stroke="#B45309"
-              strokeWidth="1.4"
-              strokeLinejoin="round"
-            />
-            {/* Tiny pink heart tech sticker on corner of laptop */}
-            <path
-              d="M111 94 C111 92.5, 113 92, 114 93.2 C115 92, 117 92.5, 117 94 C117 96, 114 98, 114 98 C114 98, 111 96, 111 94 Z"
-              fill="#F48FB1"
-            />
-            {/* Laptop base resting on the card border */}
-            <rect
-              x="44"
-              y="118"
-              width="88"
-              height="9"
-              rx="4.5"
-              fill="#D4DFEE"
-              stroke="#5B4031"
-              strokeWidth="2.5"
-            />
-            <line x1="79" y1="122.5" x2="97" y2="122.5" stroke="#7A8A9E" strokeWidth="2" strokeLinecap="round" />
-
-            {/* Cute paws gripping the sides/border */}
-            <ellipse cx="42" cy="119" rx="10" ry="7.2" fill="#E6BE9A" stroke="#5B4031" strokeWidth="2.5" />
-            <ellipse cx="42" cy="120.2" rx="4.8" ry="3" fill="#F9DEC9" />
-            <ellipse cx="134" cy="119" rx="10" ry="7.2" fill="#E6BE9A" stroke="#5B4031" strokeWidth="2.5" />
-            <ellipse cx="134" cy="120.2" rx="4.8" ry="3" fill="#F9DEC9" />
-          </svg>
-        </button>
-
-        <section
-          aria-label={lang === 'th' ? 'ปุ่มคำสั่งประจำวันหน้าประตู' : 'Daily Door Command Buttons'}
-          data-testid="door-commands-section"
-          className="pastel-card rounded-[28px] border-2 bg-white/95 px-4 pb-4 pt-8 transition-colors duration-200 sm:px-5 sm:pb-5 sm:pt-9"
-          style={{ borderColor: theme.innerBorder }}
-        >
-          <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2">
+      {/* Door Command Buttons Section */}
+      <section
+        aria-label={lang === 'th' ? 'ปุ่มคำสั่งประจำวันหน้าประตู' : 'Daily Door Command Buttons'}
+        data-testid="door-commands-section"
+        className="pastel-card rounded-[28px] border-2 bg-white/95 p-4 transition-colors duration-200 sm:p-5"
+        style={{ borderColor: theme.innerBorder }}
+      >
+        <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="flex items-center gap-2 text-base font-bold text-[#3D3532] sm:text-lg">
               <Clock className="h-4 w-4 shrink-0" style={{ color: theme.accentText }} />
@@ -611,11 +401,22 @@ export const MagicDoorView: React.FC<MagicDoorViewProps> = ({
               )}
             </p>
           </div>
-          {isHolidayToday && (
-            <span className="rounded-xl border border-[#74CCB8] bg-[#E7FAF6] px-3 py-1 text-xs font-bold text-[#114B43]">
-              🏖️ โหมดวันหยุด (ยกเว้นสาย)
-            </span>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={handleOpenBearStarModal}
+              data-testid="star-check-trigger"
+              className="pastel-btn inline-flex min-h-[36px] items-center gap-1.5 rounded-xl border-2 border-[#E8D575] bg-[#FFF5BA] px-3 py-1 text-xs font-bold text-[#713F12] shadow-xs hover:brightness-[0.97]"
+            >
+              <span>⭐</span>
+              <span>{lang === 'th' ? 'เช็คยอดสะสมดาว' : 'Check Stars'}</span>
+            </button>
+            {isHolidayToday && (
+              <span className="rounded-xl border border-[#74CCB8] bg-[#E7FAF6] px-3 py-1 text-xs font-bold text-[#114B43]">
+                🏖️ โหมดวันหยุด (ยกเว้นสาย)
+              </span>
+            )}
+          </div>
         </div>
 
         {visibleCommandEntries.length === 0 ? (
@@ -702,13 +503,24 @@ export const MagicDoorView: React.FC<MagicDoorViewProps> = ({
                           ⏰ {cmd.startTime}–{cmd.endTime} น. (เส้นตาย {cmd.deadlineTime}
                           {cmd.earlyMinutes > 0 ? ` · ก่อนเวลา ${cmd.earlyMinutes} น.` : ''})
                         </span>
+                        {cmd.activeDays && cmd.activeDays.length > 0 && (
+                          <>
+                            <span>·</span>
+                            <span>📅 {formatActiveDaysLabel(cmd.activeDays)}</span>
+                          </>
+                        )}
                         <span>·</span>
                         <span>{formatAuthModeLabel(cmd.authMode)}</span>
                         {isPenalty ? (
                           <>
                             <span>·</span>
                             <span className="font-semibold text-[#9F1239]">
-                              {formatPenaltyRuleLabel(cmd.penaltyType, cmd.penaltyValue, cmd.customPenaltyLabelTh)}
+                              {formatPenaltyRuleLabel(
+                                cmd.penaltyType,
+                                cmd.penaltyValue,
+                                cmd.customPenaltyLabelTh,
+                                cmd.penaltyMaxThb
+                              )}
                             </span>
                           </>
                         ) : (
@@ -745,88 +557,6 @@ export const MagicDoorView: React.FC<MagicDoorViewProps> = ({
             })}
           </div>
         )}
-        </section>
-      </div>
-
-      {/* 4-Language Daily Vocabulary Strip (JP / ZH / EN / TH) */}
-      <section
-        aria-label={lang === 'th' ? 'คำศัพท์ประจำวัน 4 ภาษา' : 'Daily 4-Language Word'}
-        className="pastel-card rounded-[26px] border-2 bg-white/95 p-5 transition-colors duration-200"
-        style={{ borderColor: theme.innerBorder }}
-      >
-        <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-xs font-medium text-[#6B5D55] sm:text-sm">
-            <BookOpen className="h-4 w-4 shrink-0" style={{ color: theme.accentText }} />
-            <span>
-              {lang === 'th' ? 'คำศัพท์ประจำวัน 4 ภาษา' : 'Daily Word · 4 Languages'}
-            </span>
-            <span aria-hidden="true" className="text-[#C4B8B0]">
-              ·
-            </span>
-            <span className="tabular-nums text-xs text-[#8A7D75]">
-              {vocabIndex + 1}/{DAILY_VOCAB_LIST.length}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setVocabOffset((prev) => prev - 1)}
-              aria-label={lang === 'th' ? 'คำศัพท์ก่อนหน้า' : 'Previous word'}
-              className="pastel-btn flex h-9 w-9 items-center justify-center rounded-full border bg-white text-[#5F544E] hover:bg-[#FAF6F2]"
-              style={{ borderColor: theme.innerBorder }}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setVocabOffset((prev) => prev + 1)}
-              aria-label={lang === 'th' ? 'คำศัพท์ถัดไป' : 'Next word'}
-              className="pastel-btn flex h-9 w-9 items-center justify-center rounded-full border bg-white text-[#5F544E] hover:bg-[#FAF6F2]"
-              style={{ borderColor: theme.innerBorder }}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-          <div
-            className="rounded-[18px] border p-3.5 transition-colors duration-200"
-            style={{ backgroundColor: theme.softTint, borderColor: theme.innerBorder }}
-          >
-            <div className="text-[11px] font-medium text-[#70645D]">日本語 · ญี่ปุ่น</div>
-            <div className="mt-1 text-lg font-semibold text-[#3D3532]">{dailyWord.jp}</div>
-            <div className="mt-0.5 text-xs text-[#70645D]">{dailyWord.jpReading}</div>
-          </div>
-
-          <div
-            className="rounded-[18px] border p-3.5 transition-colors duration-200"
-            style={{ backgroundColor: theme.softTint, borderColor: theme.innerBorder }}
-          >
-            <div className="text-[11px] font-medium text-[#70645D]">中文 · จีน</div>
-            <div className="mt-1 text-lg font-semibold text-[#3D3532]">{dailyWord.zh}</div>
-            <div className="mt-0.5 text-xs text-[#70645D]">{dailyWord.zhReading}</div>
-          </div>
-
-          <div
-            className="rounded-[18px] border p-3.5 transition-colors duration-200"
-            style={{ backgroundColor: theme.softTint, borderColor: theme.innerBorder }}
-          >
-            <div className="text-[11px] font-medium text-[#70645D]">English · อังกฤษ</div>
-            <div className="mt-1 text-lg font-semibold text-[#3D3532]">{dailyWord.en}</div>
-          </div>
-
-          <div
-            className="rounded-[18px] border p-3.5 transition-colors duration-200"
-            style={{ backgroundColor: theme.softTint, borderColor: theme.innerBorder }}
-          >
-            <div className="text-[11px] font-medium text-[#70645D]">ภาษาไทย · Thai</div>
-            <div className="mt-1 text-lg font-semibold" style={{ color: theme.accentText }}>
-              {dailyWord.th}
-            </div>
-          </div>
-        </div>
       </section>
 
       {/* Minimal Collapsible Cloud Sync Toggle */}
@@ -940,10 +670,27 @@ export const MagicDoorView: React.FC<MagicDoorViewProps> = ({
                   )}
                   <p className="mt-1 text-[11px] font-semibold text-[#705F56]">
                     ⏰ {activeCommand.startTime}–{activeCommand.endTime} น. · เส้นตาย{' '}
-                    {activeCommand.deadlineTime} น. · {formatAuthModeLabel(activeCommand.authMode)}
+                    {getEffectiveCommandDeadlineTime(activeCommand, now, selectedKid)} น.
+                    {activeCommand.id === 'cmd_return_phone' && selectedKid && (
+                      <span className="ml-1 text-[#0F766E]">
+                        (
+                        {getEffectiveCommandDeadlineTime(activeCommand, now, selectedKid) === '22:45'
+                          ? 'ขอทำการบ้านแล้ว'
+                          : 'ไม่ได้ขอทำการบ้าน'}
+                        )
+                      </span>
+                    )}{' '}
+                    · {formatAuthModeLabel(activeCommand.authMode)}
                   </p>
                   <p className="text-[11px] text-[#9F1239]">
-                    ⚖️ {activeCommand.penaltyNoteTh || formatPenaltyRuleLabel(activeCommand.penaltyType, activeCommand.penaltyValue, activeCommand.customPenaltyLabelTh)}
+                    ⚖️{' '}
+                    {activeCommand.penaltyNoteTh ||
+                      formatPenaltyRuleLabel(
+                        activeCommand.penaltyType,
+                        activeCommand.penaltyValue,
+                        activeCommand.customPenaltyLabelTh,
+                        activeCommand.penaltyMaxThb
+                      )}
                   </p>
                 </div>
                 <button
@@ -1129,7 +876,7 @@ export const MagicDoorView: React.FC<MagicDoorViewProps> = ({
             <div className="flex items-start justify-between gap-3 border-b border-[#EBD8C3] pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#E8D575] bg-[#FFF5BA] text-2xl">
-                  🐻
+                  ⭐
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-[#3B2F2A]">

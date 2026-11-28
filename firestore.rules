@@ -242,7 +242,7 @@ service cloud.firestore {
           'ownerUid', 'updatedByUid', 'createdAt', 'updatedAt'
         ])
         && data.keys().hasOnly([
-          'creatorPins', 'googleSheetsUrl', 'allowedEmails', 'holidayDate', 'doorCommands',
+          'creatorPins', 'googleSheetsUrl', 'allowedEmails', 'holidayDate', 'doorCommands', 'bearStyle',
           'ownerUid', 'updatedByUid', 'createdAt', 'updatedAt'
         ])
         && data.creatorPins is list && data.creatorPins.size() >= 1 && data.creatorPins.size() <= 10 && data.creatorPins[0] is string
@@ -253,6 +253,17 @@ service cloud.firestore {
           data.doorCommands is list
           && data.doorCommands.size() <= 30
           && (data.doorCommands.size() == 0 || data.doorCommands[0] is map)
+        ))
+        && (!('bearStyle' in data) || (
+          data.bearStyle is map
+          && data.bearStyle.keys().hasAll(['glasses', 'hat', 'outfit', 'outfitColor', 'hasScarf', 'prop'])
+          && data.bearStyle.keys().hasOnly(['glasses', 'hat', 'outfit', 'outfitColor', 'hasScarf', 'prop'])
+          && data.bearStyle.glasses is bool
+          && data.bearStyle.hasScarf is bool
+          && data.bearStyle.hat in ['beret_bow', 'beret', 'headband_bow', 'cap', 'none']
+          && data.bearStyle.outfit in ['cardigan_scarf', 'hoodie', 'overall', 'blazer']
+          && data.bearStyle.outfitColor in ['blush', 'sky', 'mint', 'lavender', 'butter', 'mocha']
+          && data.bearStyle.prop in ['laptop', 'tablet', 'headphones', 'none']
         ))
         && data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128
         && data.updatedByUid is string && data.updatedByUid.size() >= 1 && data.updatedByUid.size() <= 128
